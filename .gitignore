@@ -1,0 +1,10 @@
+.build/
+*.exe
+*.dll
+*.pdb
+*.log
+*.dmp
+*.bin
+.DS_Store
+.env
+.env.*

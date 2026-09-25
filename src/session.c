@@ -1,0 +1,168 @@
+/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
+ * MADEIRA_DOCK_PRIVATE_SOURCE
+ * ml1820: opt-in native Windows authentication experiment. All login and
+ * entitlement decisions belong to Valve's unmodified client. No credential
+ * extraction, token fabrication, or API replacement is performed here.
+ */
+#include "session.h"
+#include "launch.h"
+#include "validation.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+#ifdef _WIN64
+typedef void *(__thiscall *get_user_fn)(void *, int32_t, int32_t);
+typedef bool (__thiscall *query_fn)(void *);
+typedef bool (__thiscall *cached_fn)(void *, const char *);
+typedef bool (__thiscall *select_fn)(void *, const char *, bool);
+typedef int32_t (__thiscall *logon_fn)(void *, uint64_t);
+typedef bool (__thiscall *subscribed_fn)(void *, uint32_t);
+typedef int32_t (__thiscall *subscriptions_fn)(void *, uint32_t *, int32_t, bool);
+
+/* These RVAs identify the exact September 2026 DLL, not a portable private
+ * ABI. The SHA-256 gate in main.c is mandatory before any private call.
+ * Slot names were independently checked against the DLL's RTTI map and IPC
+ * method strings, then signatures against the OpenSteamworks declarations.
+ * Unsupported versions fail closed rather than calling guessed methods.
+ */
+static bool method_is(HMODULE module, void *object, unsigned slot, uintptr_t rva)
+{
+    return (*(void ***)object)[slot] == (void *)((uintptr_t)module + rva);
+}
+
+static bool enabled(const char *name)
+{
+    const char *s = getenv(name);
+    return s && !strcmp(s, "1");
+}
+
+int sh_session(HMODULE module, void *engine, const struct sh_api *api,
+               const struct sh_observer *o, bool exact_client)
+{
+    int result = 30;
+    int32_t pipe = 0, user = 0;
+    if (!exact_client || !method_is(module, engine, 8, 0x972ff0)) {
+        o->event("session-unsupported-client", 1);
+        return result;
+    }
+    user = api->create_global_user(&pipe);
+    if (user <= 0 || pipe <= 0) goto done;
+    void *client_user = ((get_user_fn)(*(void ***)engine)[8])(engine, user, pipe);
+    if (!client_user) goto done;
+    o->event("session-user-vtable-rva", (int32_t)((uintptr_t)*(void **)client_user - (uintptr_t)module));
+    const struct { unsigned slot; uintptr_t rva; } methods[] = {
+        {1, 0x8412f0}, {4, 0x736110}, {6, 0x729a20},
+        {49, 0x72ee00}, {50, 0x859860}, {181, 0x735670}, {182, 0x792860}
+    };
+    for (unsigned i = 0; i < sizeof(methods)/sizeof(methods[0]); ++i) {
+        if (!method_is(module, client_user, methods[i].slot, methods[i].rva)) {
+            o->event("session-user-method-mismatch", (int32_t)methods[i].slot);
+            goto done;
+        }
+    }
+    o->event("session-private-abi-verified", 1);
+    if (!enabled("MADEIRA_STEAM_HOST_LOGIN")) {
+        o->event("session-login-disabled", 1);
+        result = 0;
+        goto done;
+    }
+    /* Account identifiers are passed by the local launcher without printing
+     * them. These are not credentials; cached secrets stay inside Valve code.
+     * Never call InvalidateCredentials/DestroyCachedCredentials on this path.
+     */
+    const char *name = getenv("MADEIRA_STEAM_HOST_ACCOUNT");
+    const char *id_text = getenv("MADEIRA_STEAM_HOST_STEAMID");
+    const char *app_text = getenv("MADEIRA_STEAM_HOST_APPID");
+    char *end = NULL;
+    uint64_t id = id_text ? strtoull(id_text, &end, 10) : 0;
+    if (!name || !*name || strlen(name) > 64 || !id || !end || *end ||
+        (id >> 56) != 1 || ((id >> 52) & 15) != 1) {
+        o->event("session-account-input-invalid", 1);
+        goto done;
+    }
+    end = NULL;
+    unsigned long app = app_text ? strtoul(app_text, &end, 10) : 0;
+    if (!app || app == UINT32_MAX || !end || *end) {
+        o->event("session-app-input-invalid", 1);
+        goto done;
+    }
+    void **v = *(void ***)client_user;
+    bool cached = ((cached_fn)v[49])(client_user, name);
+    o->event("session-cached-credentials-available", cached);
+    if (!cached) { result = 31; goto done; }
+    bool selected = ((select_fn)v[50])(client_user, name, false);
+    o->event("session-cached-account-selected", selected);
+    if (!selected) { result = 32; goto done; }
+    int32_t started = ((logon_fn)v[1])(client_user, id);
+    o->event("session-logon-start-result", started);
+    if (started != 1) { result = 33; goto done; }
+
+    uint64_t begin = o->now_ms(), online_at = 0;
+    bool was_online = false;
+    unsigned logged_callbacks = 0;
+    result = 34;
+    for (unsigned tick = 0; tick < 4500 && o->now_ms() - begin < 90000; ++tick) {
+        for (unsigned batch = 0; batch < 64; ++batch) {
+            struct sh_callback cb = {0};
+            if (!api->get_callback(pipe, &cb)) break;
+            bool valid = cb.id > 0 && cb.size >= 0 && (!cb.size || cb.data);
+            if (logged_callbacks++ < 16) o->event("session-callback-id", cb.id);
+            if (valid && (cb.id == 102 || cb.id == 103) && cb.size >= 4) {
+                int32_t error;
+                memcpy(&error, cb.data, 4);
+                o->event("session-connection-result", error);
+            }
+            api->free_callback(pipe);
+            if (!valid) { result = SH_CALLBACK_INVALID; goto done; }
+        }
+        bool online = api->logged_on(user, pipe) &&
+            ((query_fn)v[4])(client_user) && ((query_fn)v[6])(client_user);
+        if (online != was_online) {
+            o->event("session-authenticated-online", online);
+            was_online = online;
+            online_at = online ? o->now_ms() : 0;
+        }
+        /* Allow the real licence/app-info callbacks to arrive after logon.
+         * A true subscription is required; timeout never permits launch.
+         */
+        if (online && o->now_ms() - online_at >= 5000) {
+            bool entitled = ((subscribed_fn)v[181])(client_user, (uint32_t)app);
+            if (entitled) {
+                uint32_t *apps = calloc(65536, sizeof(uint32_t));
+                if (!apps) { result = 36; break; }
+                int32_t count = ((subscriptions_fn)v[182])(client_user, apps, 65536, true);
+                bool listed = false;
+                if (count < 0 || count >= 65536) {
+                    free(apps); result = 36; break;
+                }
+                listed = sh_subscription_list_contains(apps, count, 65536, (uint32_t)app);
+                free(apps);
+                o->event("session-requested-app-entitled", entitled);
+                o->event("session-subscription-count", count);
+                o->event("session-requested-app-listed", listed);
+                o->event("session-app-zero-query", ((subscribed_fn)v[181])(client_user, 0));
+                o->event("session-invalid-app-query", ((subscribed_fn)v[181])(client_user, UINT32_MAX));
+                result = listed ? 0 : 35;
+                if (!result && enabled("MADEIRA_STEAM_HOST_LAUNCH"))
+                    result = sh_launch(module, engine, client_user, api, o, pipe, user, id, (uint32_t)app);
+                break;
+            }
+        }
+        o->sleep_ms(20);
+    }
+done:
+    o->event("session-auth-test-result", result);
+    if (pipe > 0 && user > 0) api->release_user(pipe, user);
+    if (pipe > 0 && !api->release_pipe(pipe) && !result) result = SH_RELEASE_FAILED;
+    return result;
+}
+#else
+int sh_session(HMODULE module, void *engine, const struct sh_api *api,
+               const struct sh_observer *o, bool exact_client)
+{
+    (void)module; (void)engine; (void)api; (void)exact_client;
+    o->event("session-requires-64-bit-host", 1);
+    return 30;
+}
+#endif
