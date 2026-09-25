@@ -23,10 +23,10 @@ static bool exact_client;
 
 static void event(const char *stage, int32_t value)
 {
-    fprintf(stderr, "[steam-host] ml1820 %s=%ld\n", stage, (long)value);
+    fprintf(stderr, "[steam-host] ml1830 %s=%ld\n", stage, (long)value);
     fflush(stderr);
     if (report) {
-        fprintf(report, "[steam-host] ml1820 %s=%ld\n", stage, (long)value);
+        fprintf(report, "[steam-host] ml1830 %s=%ld\n", stage, (long)value);
         fflush(report);
     }
 }

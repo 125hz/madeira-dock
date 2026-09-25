@@ -7,6 +7,7 @@
 #include "session.h"
 #include "launch.h"
 #include "validation.h"
+#include "auth.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@ typedef bool (__thiscall *query_fn)(void *);
 typedef bool (__thiscall *cached_fn)(void *, const char *);
 typedef bool (__thiscall *select_fn)(void *, const char *, bool);
 typedef int32_t (__thiscall *logon_fn)(void *, uint64_t);
+typedef void (__thiscall *token_fn)(void *, const char *, const char *);
 typedef bool (__thiscall *subscribed_fn)(void *, uint32_t);
 typedef int32_t (__thiscall *subscriptions_fn)(void *, uint32_t *, int32_t, bool);
 
@@ -41,6 +43,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
                const struct sh_observer *o, bool exact_client)
 {
     int result = 30;
+    struct dock_auth auth = {0};
     int32_t pipe = 0, user = 0;
     if (!exact_client || !method_is(module, engine, 8, 0x972ff0)) {
         o->event("session-unsupported-client", 1);
@@ -53,7 +56,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     o->event("session-user-vtable-rva", (int32_t)((uintptr_t)*(void **)client_user - (uintptr_t)module));
     const struct { unsigned slot; uintptr_t rva; } methods[] = {
         {1, 0x8412f0}, {4, 0x736110}, {6, 0x729a20},
-        {49, 0x72ee00}, {50, 0x859860}, {181, 0x735670}, {182, 0x792860}
+        {49, 0x72ee00}, {50, 0x859860}, {56, 0x869f80}, {181, 0x735670}, {182, 0x792860}
     };
     for (unsigned i = 0; i < sizeof(methods)/sizeof(methods[0]); ++i) {
         if (!method_is(module, client_user, methods[i].slot, methods[i].rva)) {
@@ -76,7 +79,17 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     const char *app_text = getenv("MADEIRA_STEAM_HOST_APPID");
     char *end = NULL;
     uint64_t id = id_text ? strtoull(id_text, &end, 10) : 0;
-    if (!name || !*name || strlen(name) > 64 || !id || !end || *end ||
+    wchar_t handoff[32768];
+    DWORD handoff_size = GetEnvironmentVariableW(L"MADEIRA_DOCK_AUTH_FILE", handoff, 32768);
+    bool native_auth = handoff_size > 0;
+    if (native_auth) {
+        if (handoff_size >= 32768 || !dock_auth_consume(handoff, &auth)) {
+            o->event("session-native-handoff-invalid", 1);
+            result = 37; goto done;
+        }
+        name = auth.account; id = auth.steam_id;
+    }
+    if (!name || !*name || strlen(name) > 64 || !id || (!native_auth && (!end || *end)) ||
         (id >> 56) != 1 || ((id >> 52) & 15) != 1) {
         o->event("session-account-input-invalid", 1);
         goto done;
@@ -87,13 +100,23 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
         o->event("session-app-input-invalid", 1);
         goto done;
     }
+    if (native_auth && app != auth.app_id) {
+        o->event("session-native-handoff-app-mismatch", 1);
+        result = 37; goto done;
+    }
     void **v = *(void ***)client_user;
-    bool cached = ((cached_fn)v[49])(client_user, name);
-    o->event("session-cached-credentials-available", cached);
-    if (!cached) { result = 31; goto done; }
-    bool selected = ((select_fn)v[50])(client_user, name, false);
-    o->event("session-cached-account-selected", selected);
-    if (!selected) { result = 32; goto done; }
+    if (native_auth) {
+        ((token_fn)v[56])(client_user, auth.token, auth.account);
+        dock_auth_clear(auth.token, sizeof(auth.token));
+        o->event("session-native-token-submitted", 1);
+    } else {
+        bool cached = ((cached_fn)v[49])(client_user, name);
+        o->event("session-cached-credentials-available", cached);
+        if (!cached) { result = 31; goto done; }
+        bool selected = ((select_fn)v[50])(client_user, name, false);
+        o->event("session-cached-account-selected", selected);
+        if (!selected) { result = 32; goto done; }
+    }
     int32_t started = ((logon_fn)v[1])(client_user, id);
     o->event("session-logon-start-result", started);
     if (started != 1) { result = 33; goto done; }
@@ -152,6 +175,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
         o->sleep_ms(20);
     }
 done:
+    dock_auth_clear(&auth, sizeof(auth));
     o->event("session-auth-test-result", result);
     if (pipe > 0 && user > 0) api->release_user(pipe, user);
     if (pipe > 0 && !api->release_pipe(pipe) && !result) result = SH_RELEASE_FAILED;

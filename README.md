@@ -1,6 +1,6 @@
 # Madeira Dock (private)
 
-Round ml1820, Windows proof of concept. This executable loads the user's
+Round ml1830, Windows proof of concept and initial iOS integration. This executable loads the user's
 installed, unmodified Valve client. It does not replace Steam APIs or remove
 game protection. No Valve binaries are included in this source directory.
 
@@ -18,7 +18,48 @@ game on C:, one 64-bit Steamworks game on C:, and another on D:. Desktop
 menu crash did not reproduce; the owner confirmed the retry worked and said
 they likely closed the first attempt accidentally. This is startup/smoke
 validation, not extended gameplay coverage. A host exit of zero records host
-lifecycle success. Wine/iOS and native-token handoff have not been tested.
+lifecycle success. Wine/iOS and live native-token authentication have not been
+tested on a device. The handoff parser and Windows file consumption are tested
+with synthetic credentials; those tests do not claim successful authentication.
+
+## Private source and distribution
+
+This repository must remain **private**. Its independently written source is
+proprietary, and unmodified executable releases may accompany Madeira under
+LICENSE. The public app contains the executable, license notices and a public
+launch adapter only. No source, debug symbols, local Steam login, account data,
+client configuration, Valve binaries, games or test logs may be uploaded.
+Check repository visibility before every push. Executables remain inspectable;
+private source access is not a guarantee against reverse engineering.
+
+## Native sign-in handoff (ml1830)
+
+The app's QR/password sign-in obtains its user's refresh token from Steam and
+stores it in Keychain. The app pauses downloads, disables native reconnection,
+awaits Steam logoff/socket close, then writes a one-use transfer in protected
+Application Support storage. Only that path enters the guest environment.
+The native app's JWT-subject parsing selects an account; it is not trusted as
+proof of identity or ownership. The real client must accept the token online.
+
+`MADEIRA_DOCK_AUTH_FILE` selects this route. Missing, locked, malformed or
+mismatched handoffs fail; they never fall back to cached PC credentials.
+The file is opened exclusively with delete-on-close before any login call.
+The host clears its temporary buffers and submits the token to the exact
+client's verified SetLoginToken method. Valve's LogOn, authenticated state,
+subscription list and original game launch/DRM checks still gate execution.
+Valve may maintain its own login cache inside the user's Wine prefix.
+
+Wire version `MDOCK001`: 8 magic bytes; little-endian u64 SteamID, u32 AppID,
+u16 account length, u16 token length; account bytes then token bytes, no NULs
+or trailing data. Account length 1–64, token length 1–8192. No password or
+ownership assertions are present. A transfer is scoped to one requested AppID.
+
+The iOS trial is off until `MADEIRA_DOCK=1` is set in madeira-env.txt. It still
+uses Valve's official installer to prepare client files, requires the pinned
+client version, and supports the default launch option without custom args.
+One native sign-in is intended to replace the desktop sign-in. Removing the
+installer, clean-prefix support and authenticated device launches are pending
+device evidence. `MADEIRA_DOCK=0` restores the existing desktop launch route.
 
 **Private ABI support is limited to one independently inspected client build:**
 
@@ -115,9 +156,11 @@ The native ASan/UBSan tests cover bootstrap cleanup, malformed callbacks,
 callback fairness/time bounds, subscription-list bounds and exact launch-result
 decoding. They do not emulate a successful Steam server response.
 
-`tools/build.sh --stage` copies only the stripped x64 EXE to the Madeira
-resource directories. This is explicit and has not been used for ml1820;
-the Madeira app's production launch path is unchanged by this experiment.
+`tools/build.sh --stage` copies the stripped x64 EXE and required license
+notices into Madeira's resource directory. Source remains in this private repo.
+The public app routes games to Dock only with its explicit trial switch enabled.
+`python3 tools/check-privacy.py` tests the public repository's source-leak hooks
+using an isolated disposable Git repository.
 
 ## References and provenance
 

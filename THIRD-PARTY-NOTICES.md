@@ -15,3 +15,7 @@ they are separate from Dock's proprietary source license. Windows system DLLs
 are provided by Windows or the Wine environment. Valve's client components
 are obtained separately under Valve's terms and are not covered by Dock's
 license. GameNative's proprietary host was not used.
+
+Runtime license texts accompanying executable releases are retained in
+`notices/MinGW-w64-runtime.txt` and `notices/LLVM.txt`. The stage command
+includes these with the proprietary binary permission in dock-notices.txt.
