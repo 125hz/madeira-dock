@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
- * MADEIRA_DOCK_PRIVATE_SOURCE */
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 125hz
+ * Madeira Converter Exception: see LICENSE-EXCEPTION.md */
 #ifndef MADEIRA_DOCK_AUTH_H
 #define MADEIRA_DOCK_AUTH_H
 #include <stdbool.h>

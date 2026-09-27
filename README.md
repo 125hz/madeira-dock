@@ -1,4 +1,11 @@
-# Madeira Dock (private)
+# Madeira Dock
+
+Madeira Dock is a headless host for Valve's genuine Steam client, used by the
+Madeira app to launch a user's own purchased games with real Steam
+authentication, entitlement checks and the games' original DRM.
+
+**Licence:** GPL-3.0-or-later with the Madeira Converter Exception;
+Copyright 2026 125hz. See `LICENSE`, `COPYING` and `LICENSE-EXCEPTION.md`.
 
 Host ml1870, with authenticated device launch confirmed in the ml1880 notes.
 This executable loads the user's
@@ -12,12 +19,12 @@ requested-app subscription membership. The owner confirms the installed
 32-bit game runs on iOS through Dock, with roughly 2.9 GB total app memory.
 This supersedes earlier unproven-device notes below. It does not prove
 clean-prefix setup, all games, revocation handling or all multiplayer APIs.
-The private host executable is unchanged. Public ml1880 tests a smaller
+The Dock host executable is unchanged. Public ml1880 tests a smaller
 512 MiB Dock JIT pool (desktop recovery preserved) and avoids guest D3D9
 per-call census work during normal gameplay. Gains need device A/B testing.
 Read the sibling docs/MADEIRA_DOCK.md for rollback and test instructions.
-Private source separation, original Valve libraries, real authentication,
-subscription checks and original game DRM remain mandatory.
+Original Valve libraries, real authentication, subscription checks and
+original game DRM remain mandatory.
 
 ## Current operation
 
@@ -37,15 +44,24 @@ lifecycle success. Wine/iOS and live native-token authentication are now confirm
 limited device trial described above. The handoff parser and Windows file consumption are tested
 with synthetic credentials; those tests do not claim successful authentication.
 
-## Private source and distribution
+## Licence, contributions and distribution
 
-This repository must remain **private**. Its independently written source is
-proprietary, and unmodified executable releases may accompany Madeira under
-LICENSE. The public app contains the executable, license notices and a public
-launch adapter only. No source, debug symbols, local Steam login, account data,
-client configuration, Valve binaries, games or test logs may be uploaded.
-Check repository visibility before every push. Executables remain inspectable;
-private source access is not a guarantee against reverse engineering.
+Madeira Dock is free software: GPL-3.0-or-later with the Madeira Converter
+Exception, Copyright 2026 125hz (`LICENSE`, `COPYING`,
+`LICENSE-EXCEPTION.md`). The owner open-sourced the previously private
+implementation on 2026-09-27. Contributions are accepted under the same terms;
+every source, test and tool file carries the SPDX header. Third-party
+references and runtime notices are in `THIRD-PARTY-NOTICES.md` and `notices/`.
+
+Madeira bundles the stripped x64 executable with `dock-notices.txt` (licence
+statement, exception, GPL text and LLVM/MinGW runtime notices); this
+repository is its corresponding source.
+
+Never commit secrets or personal data: tokens, passwords, Steam login caches
+(`loginusers.vdf`, `config.vdf`, `ssfn*`), account names, real SteamIDs,
+personal paths or email addresses, test logs, client configuration, Valve
+binaries, games, debug symbols or `.build/` output.
+`python3 tools/check-privacy.py` scans for these (see Build and checks).
 
 ## Native sign-in handoff (ml1830)
 
@@ -89,26 +105,23 @@ ship the pinned Windows adapter as a universal solution to private ABI drift.
 
 ## Native Windows test
 
-Exit desktop Steam normally first. From PowerShell in the repository root:
+Exit desktop Steam normally first. The owner's earlier native Windows results
+below came from a developer-only harness that selected the PC's cached Steam
+account. **Cached-login testing is not part of the public tools**: that
+harness was removed when the source was opened, and no script in this
+repository reads a PC's Steam login cache. The host's cached-login mode is
+still reachable by setting the gates below plus `MADEIRA_STEAM_HOST_ACCOUNT`,
+`MADEIRA_STEAM_HOST_STEAMID` and `MADEIRA_STEAM_HOST_APPID` in the process
+environment yourself; never commit those values. The public test is
+`tools/test-invalid-handoff.ps1` (synthetic, fails before login).
 
-```powershell
-# Sign in with the existing cached account and check an App ID, without launching.
-./tools/test-session.ps1 -AppId <owned-app-id>
-
-# Launch from an explicitly selected existing Steam library.
-./tools/test-session.ps1 -AppId <owned-app-id> -Launch -LibraryRoot '<Steam-library-root>'
-```
-
-The root is the folder containing `steamapps`. The launcher reads that library's
-manifest and requires the real client's resolved installation directory to
-match it exactly. This avoids accidentally testing a second/old installation.
-There are no game-specific paths or fixes in the host.
-
-The script chooses the sole cached account, or the one explicitly marked most
-recent when several exist. It fails on ambiguity. It does not read credential
-tokens, print account identifiers, modify game executables or call APIs that
-invalidate cached credentials. Account metadata is passed in the child
-environment and the script restores its previous environment afterward.
+For a launch, `MADEIRA_STEAM_HOST_EXPECTED_INSTALL` names the game's
+installation directory (from the chosen library's `steamapps` manifest); the
+host requires the real client's resolved installation directory to match it
+exactly. This avoids accidentally testing a second/old installation. There are no game-specific paths or fixes
+in the host. The host does not read credential tokens, print account
+identifiers, modify game executables or call APIs that invalidate cached
+credentials.
 
 The host uses the standard installed Steam service and supporting client files.
 Its memory figure therefore does not include all system-wide Steam components.
@@ -129,7 +142,9 @@ The 32-bit EXE supports the bootstrap only; session/launch requires the x64 host
 - `MADEIRA_STEAM_HOST_SESSION=1`: version-gated private interface test.
 - `MADEIRA_STEAM_HOST_LOGIN=1`: genuine cached authentication.
 - `MADEIRA_STEAM_HOST_LAUNCH=1`: launch only after authentication and entitlement.
-- Account, App ID, expected installation and report path are set by the script.
+- Account, App ID, expected installation (`MADEIRA_STEAM_HOST_EXPECTED_INSTALL`)
+  and report path (`MADEIRA_STEAM_HOST_LOG`) come from the launcher's environment
+  (Madeira's adapter on device; set manually for a PC test).
 - No fallback launches a game after failed authentication or entitlement.
 
 Authentication requires `Steam_BLoggedOn`, `IClientUser::BLoggedOn` and
@@ -171,11 +186,23 @@ The native ASan/UBSan tests cover bootstrap cleanup, malformed callbacks,
 callback fairness/time bounds, subscription-list bounds and exact launch-result
 decoding. They do not emulate a successful Steam server response.
 
-`tools/build.sh --stage` copies the stripped x64 EXE and required license
-notices into Madeira's resource directory. Source remains in this private repo.
-The public app routes games to Dock only with its explicit trial switch enabled.
-`python3 tools/check-privacy.py` tests the public repository's source-leak hooks
-using an isolated disposable Git repository.
+`tools/build.sh --stage` copies the stripped x64 EXE into Madeira's resource
+directory and writes `dock-notices.txt` there: the GPL-3.0-or-later statement,
+the Madeira Converter Exception, the GPL-3.0 text and the LLVM/MinGW-w64
+runtime notices. The app routes games to Dock only with its explicit trial
+switch enabled.
+
+```sh
+python3 tools/check-privacy.py              # tracked files
+python3 tools/check-privacy.py --history    # all reachable blobs and commit messages
+python3 tools/check-privacy.py --self-test  # rule fixtures
+```
+
+The secret/personal-data scan fails on personal user paths, email addresses,
+JWT-like tokens, private keys and common API tokens, real-looking SteamIDs
+other than the synthetic test IDs, and Steam login-cache files/content.
+Madeira's `.githooks/pre-commit` and `pre-push` apply the same rules to added
+lines.
 
 ## References and provenance
 
@@ -189,7 +216,7 @@ current binary layouts. Public shutdown slot 23 was checked against
 
 [Valve's API overview](https://partner.steamgames.com/doc/sdk/api) and
 [DRM documentation](https://partner.steamgames.com/doc/features/drm) describe the
-game-facing client requirements. GameNative's proprietary steamhost binaries
+game-facing client requirements. GameNative's closed-source steamhost binaries
 were not reused; see its
 [third-party notices](https://github.com/utkarshdalal/GameNative/blob/master/THIRD_PARTY_NOTICES).
 

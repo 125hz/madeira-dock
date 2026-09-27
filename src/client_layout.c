@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
- * MADEIRA_DOCK_PRIVATE_SOURCE
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 125hz
+ * Madeira Converter Exception: see LICENSE-EXCEPTION.md
  * ml1860: exact, independently inspected Valve builds. Never select an ABI
  * from a date/version or interface presence alone. See docs/CLIENT_LAYOUTS.md.
  */

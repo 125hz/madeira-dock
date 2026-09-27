@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 125hz
+# Madeira Converter Exception: see LICENSE-EXCEPTION.md
 # ml1830: synthetic malformed transfer, no account data and no game launch.
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path

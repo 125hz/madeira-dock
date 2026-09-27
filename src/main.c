@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
- * MADEIRA_DOCK_PRIVATE_SOURCE
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 125hz
+ * Madeira Converter Exception: see LICENSE-EXCEPTION.md
  * ml1820: native Windows milestone for a host of Valve's genuine client.
  * No Valve binaries are bundled with this program. Opt-in session mode calls
  * independently verified private methods only for an exact client SHA-256;

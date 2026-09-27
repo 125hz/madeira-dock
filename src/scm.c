@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
- * MADEIRA_DOCK_PRIVATE_SOURCE
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 125hz
+ * Madeira Converter Exception: see LICENSE-EXCEPTION.md
  * ml2000: Valve's client performs custom-executable (CEG) preparation
  * through its own installed client service, which it demand-starts through
  * the Windows service manager. A Dock session runs only this host, so Wine's

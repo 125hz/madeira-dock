@@ -1,5 +1,6 @@
-/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
- * MADEIRA_DOCK_PRIVATE_SOURCE
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright 2026 125hz
+ * Madeira Converter Exception: see LICENSE-EXCEPTION.md
  * ml1820: opt-in native Windows authentication experiment. All login and
  * entitlement decisions belong to Valve's unmodified client. No credential
  * extraction, token fabrication, or API replacement is performed here.

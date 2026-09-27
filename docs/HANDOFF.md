@@ -1,5 +1,18 @@
 # Madeira Dock — implementation handoff, ml2000 (2026-09-25)
 
+## Open-sourcing — 2026-09-27
+
+The owner (125hz, sole author) open-sourced Madeira Dock under
+GPL-3.0-or-later with the Madeira Converter Exception. The ml1990/ml2000 work
+was committed as it stood, then relicensed: SPDX headers on every
+source/test/tool file, `COPYING` and `LICENSE-EXCEPTION.md` copied from
+Madeira, a `LICENSE` statement, `dock-notices.txt` now carrying the GPL,
+exception and LLVM/MinGW runtime notices, `tools/check-privacy.py`
+repurposed as a secret/personal-data scan, the cached-login harness
+`tools/test-session.ps1` removed, and a generic compiler default in
+`tools/check.sh`. No host behaviour changed. Older sections below that
+mention private source or a proprietary licence are historical.
+
 ## Current change — service manager for Valve's CEG service
 
 The ml1990 device log: ceg-request=1, ceg-server-result=22 (pending), then
@@ -132,12 +145,12 @@ requested-app subscription membership. The owner confirms the installed
 32-bit game runs on iOS through Dock, with roughly 2.9 GB total app memory.
 This supersedes earlier unproven-device notes below. It does not prove
 clean-prefix setup, all games, revocation handling or all multiplayer APIs.
-The private host executable is unchanged. Public ml1880 tests a smaller
+The Dock host executable is unchanged. Public ml1880 tests a smaller
 512 MiB Dock JIT pool (desktop recovery preserved) and avoids guest D3D9
 per-call census work during normal gameplay. Gains need device A/B testing.
 Read the sibling docs/MADEIRA_DOCK.md for rollback and test instructions.
-Private source separation, original Valve libraries, real authentication,
-subscription checks and original game DRM remain mandatory.
+Original Valve libraries, real authentication, subscription checks and
+original game DRM remain mandatory.
 
 ## Current change — transfer diagnostics
 
@@ -163,8 +176,8 @@ Windows synthetic file tests exercise sharing violations, success, deletion,
 replay, bounds and bad-magic rejection plus diagnostic codes. Portable tests
 pass. The public namespace test extracts Wine's actual prefix resolver but
 stubs downstream directory lookup; it is not device/Wine-on-PC execution.
-Authentication and game launch still require device tests. Source remains
-private; only stripped binary/notices are staged in Madeira. No source push.
+Authentication and game launch still require device tests. Only the stripped
+binary/notices are staged in Madeira. (Source was still private at ml1870.)
 
 ## Current change — January client adapter
 
@@ -193,24 +206,27 @@ and the game's original protection must remain in the launch path.
 
 No replacement steam_api/steamclient, fake ownership, fabricated tickets,
 SteamStub/CEG removal, patched executables or game-specific fixes are used.
-The implementation is independent, not GameNative's proprietary host.
+The implementation is independent, not GameNative's closed-source host.
 
-## Repository ownership and privacy
+## Repository, licence and data hygiene
 
-- This is the PRIVATE `https://github.com/125hz/madeira-dock` repository.
-- The sibling `../Madeira` checkout is PUBLIC. Never put Dock source there,
-  including temporary copies, test implementations or private build artifacts.
-- Proprietary LICENSE covers independently written Dock code; the owner
-  explicitly authorized replacing the default GPL license and distributing
-  unmodified Dock binaries with Madeira. Third-party notices remain intact.
-- Verify GitHub `private: true` through authenticated repository metadata before
-  every source push. Push only to this exact 125hz repository.
-- The initial private import is commit `2c307e8`. No host source was committed
-  into Madeira's Git history. The old untracked build/steam-host directory was
-  moved here; old dated Madeira notes referencing it are superseded.
-- Package only stripped EXEs and license notices. No tokens, local Steam cache,
-  account data, test logs, Valve DLLs, games, PDBs or source. Private source
-  access does not prevent reverse engineering of a distributed executable.
+- Canonical repository: `https://github.com/125hz/madeira-dock`, the source
+  of the Dock executable bundled with Madeira (`../Madeira`).
+- Licence: GPL-3.0-or-later with the Madeira Converter Exception, Copyright
+  2026 125hz (`LICENSE`, `COPYING`, `LICENSE-EXCEPTION.md`). Every source,
+  test and tool file carries the SPDX header. Contributions are accepted
+  under the same terms. Third-party notices remain intact.
+- History note: until 2026-09-27 this repository was private and its code was
+  under a proprietary licence (commits `2c307e8` through the ml2000 commit).
+  The sole author, 125hz, relicensed it and opened the source on 2026-09-27;
+  the old privacy rules (private-visibility checks, keeping source out of
+  Madeira, source-marker hooks) no longer apply. Madeira's Git hooks now run
+  a secret/personal-data scan instead of blocking Dock source paths.
+- Never commit secrets or personal data: tokens, passwords, Steam login caches,
+  account names, real SteamIDs, personal paths/emails, test logs, Valve DLLs,
+  games, PDBs or `.build/` output. Run `python3 tools/check-privacy.py` (and
+  `--history` before publishing history).
+- Package the stripped EXE with `dock-notices.txt` (written by `--stage`).
 
 ## What works and what remains unproven
 
@@ -268,17 +284,23 @@ crash-recoverable. Keep the same exact client/expected-folder gates.
 
 ## Build, test and stage
 
-From this private repository on the owner's PC:
+From this repository on a Windows PC with WSL:
 
 ```powershell
 wsl -e bash tools/check.sh
 wsl -e bash tools/build.sh
 wsl -e python3 tools/check-privacy.py
+wsl -e python3 tools/check-privacy.py --self-test
 ./tools/test-invalid-handoff.ps1
-./tools/test-session.ps1 -AppId <owned-app-id>
-./tools/test-session.ps1 -AppId <owned-app-id> -Launch -LibraryRoot '<library-root>'
 wsl -e bash tools/build.sh --stage
 ```
+
+`tools/check.sh` uses `HOST_CC`, else `clang` from PATH, else the default
+swiftly location in `$HOME`. Cached-login testing is not part of the public
+tools: the former developer-only `tools/test-session.ps1` (which selected the
+PC's cached Steam account from its login cache) was removed when the source
+was opened. PC session tests set the host's environment gates manually (see
+README "Native Windows test"); never commit account values or reports.
 
 The build uses the sibling Madeira LLVM/MinGW toolchain. Override MADEIRA_ROOT,
 LLVM_MINGW_BIN or DOCK_OUTPUT when needed. PE outputs are `.build/windows/`;
@@ -289,8 +311,8 @@ can serve 32-bit games through their original client libraries.
 `--stage` copies only the stripped x64 EXE and combined notices into
 `../Madeira/app/Madeira/arm64ec-windows/`. Then use Madeira's normal xtool build
 after setting `.xtool/build-round`; preserve the Xcode project and only one
-application build at a time. The app's Git hooks reject private source paths,
-renamed private source markers and private source in pushed history.
+application build at a time. The app's Git hooks scan added lines of commits
+and pushes for secrets/personal data (same rules as `tools/check-privacy.py`).
 
 PC tests are owner-authorized. Leave desktop Steam closed; never alter the
 installed client/game files or bundle the owner's cached login. If multiple
@@ -345,7 +367,7 @@ are superseded by canonical config (legacy files are now safely imported).
 ml1860 stripped host SHA-256:
 `61976bb68737c9e39f1acd387b22c7aece406f34784352bb0307bf21a1b0f3fa`,
 30,208 bytes, staged into and verified inside Madeira IPA ml1860 · 09-24 21:30.
-The IPA contains no Valve libraries, private source, symbols or cached logins.
+The IPA contains no Valve libraries, Dock source, symbols or cached logins.
 Public IPA SHA-256: `78a10b3ce35fc5da9aee957f8e3ce0f5c6ce493fc3b8811daa7c3b73176373ca`.
 No source push in this round; device authentication and launch tests pending.
 Full-host malformed synthetic transfer also rejected before login with stage=5/error=0, removed the file, and did not take the cached-login path. The isolated official runtime emitted missing-helper warnings; no game was launched.

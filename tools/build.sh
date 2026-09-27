@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 125hz
+# Madeira Converter Exception: see LICENSE-EXCEPTION.md
 # Cross-compile only. Running Steam on a host requires the owner's authorization.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,6 +21,21 @@ echo "Built x86-64 and i386 probes in $output"
 # Staging is explicit: experimental probes are not a new default launch route.
 if [[ "${1:-}" == --stage ]]; then
     cp "$output/dockhost-x86_64.exe" "$madeira/app/Madeira/arm64ec-windows/dockhost.exe"
-    cat LICENSE notices/MinGW-w64-runtime.txt notices/LLVM.txt > "$madeira/app/Madeira/arm64ec-windows/dock-notices.txt"
-    echo "Staged stripped x64 Dock executable; source stays in the private repository"
+    notices="$madeira/app/Madeira/arm64ec-windows/dock-notices.txt"
+    # GPL-3.0-or-later with the Madeira Converter Exception, the full licence
+    # texts and the LLVM/MinGW-w64 runtime notices for the statically linked
+    # runtime. Corresponding source: https://github.com/125hz/madeira-dock
+    section() { printf '\n\n==== %s ====\n\n' "$1"; }
+    {
+        cat LICENSE
+        section 'LICENSE-EXCEPTION.md (Madeira Converter Exception)'
+        cat LICENSE-EXCEPTION.md
+        section 'COPYING (GNU General Public License, version 3)'
+        cat COPYING
+        section 'MinGW-w64 runtime notice (statically linked runtime)'
+        cat notices/MinGW-w64-runtime.txt
+        section 'LLVM runtime notice'
+        cat notices/LLVM.txt
+    } > "$notices"
+    echo "Staged stripped x64 Dock executable and GPL-3.0-or-later notices"
 fi

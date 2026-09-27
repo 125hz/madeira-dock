@@ -1,7 +1,8 @@
 # Exact client adapters — ml1860
 
-Dock source stays private. These are compatibility adapters for genuine Valve
-libraries, not replacements for the libraries or their authentication/DRM.
+"Private" below means Valve's undocumented client interfaces. These are
+compatibility adapters for genuine Valve libraries, not replacements for the
+libraries or their authentication/DRM.
 An unrecognized SHA-256 or mismatched method address fails closed. Interface
 names and PE timestamps alone never authorize private calls.
 

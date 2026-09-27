@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 125hz
+# Madeira Converter Exception: see LICENSE-EXCEPTION.md
 """Read-only check of pinned RVAs against an independently obtained Valve DLL.
 
 No Valve binaries are distributed with Dock. This check uses PE/RTTI metadata,

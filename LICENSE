@@ -1,22 +1,27 @@
-Madeira Dock — Proprietary License
-Copyright (c) 2026 125hz. All rights reserved.
+Madeira Dock
+Copyright 2026 125hz
 
-The Madeira Dock source code is private and proprietary. Access to the source
-repository does not grant permission to publish, sublicense, redistribute or
-otherwise disclose its source code. The copyright holder may authorize
-contributors to access and modify it privately.
+SPDX-License-Identifier: GPL-3.0-or-later
+Licensed GPL-3.0-or-later with the Madeira Converter Exception.
 
-The copyright holder authorizes distribution of unmodified Madeira Dock
-executable releases as part of the Madeira application. Recipients may install
-and execute those binaries with Madeira. This permission does not grant access
-to the source repository or permission to redistribute Dock source code.
+Madeira Dock is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See COPYING for the full licence text.
 
-No rights to Valve software, Steam, game content, third-party libraries or
-trademarks are granted by this license. Those components retain their own
-licenses and terms. No Valve or game binaries are included in this repository.
+Additional permission under GNU GPL version 3 section 7: 125hz, the copyright
+holder of Madeira Dock, grants for Madeira Dock the additional permission in
+the section "Madeira Converter Exception, version 1" of LICENSE-EXCEPTION.md.
+That file is reproduced unmodified from the Madeira application; its adoption
+line and "Scope and authority" section describe the Madeira repository and are
+kept for reference. This grant, by the Dock copyright holder, is what attaches
+the same permission to Madeira Dock's code, effective 2026-09-27.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO MERCHANTABILITY, FITNESS FOR A PARTICULAR
-PURPOSE AND NONINFRINGEMENT. TO THE EXTENT PERMITTED BY LAW, THE COPYRIGHT
-HOLDER SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
-FROM THE SOFTWARE OR ITS USE.
+Madeira Dock is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+No rights to Valve software, Steam, game content or trademarks are granted.
+Valve's client components and games are obtained separately under Valve's and
+their publishers' terms and are not part of this repository or its releases.
+Third-party notices: THIRD-PARTY-NOTICES.md and notices/.
