@@ -4,10 +4,14 @@
  * entitlement checks. The installed game, API DLLs and DRM remain unchanged.
  */
 #include "launch.h"
+#include "scm.h"
 #include "validation.h"
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+
+/* ml1970: an interrupted or stalled client update eventually fails closed. */
+#define SH_CONTENT_WAIT_MS (6ULL * 60 * 60 * 1000)
 
 #ifdef _WIN64
 typedef void *(__thiscall *get_manager_fn)(void *, int32_t, int32_t);
@@ -18,7 +22,7 @@ typedef bool (__thiscall *call_result_fn)(void *, int32_t, uint64_t, void *, int
 
 static bool method_is(HMODULE module, void *object, unsigned slot, uintptr_t rva)
 {
-    return object && (*(void ***)object)[slot] == (void *)((uintptr_t)module + rva);
+    return dock_method_is((uintptr_t)module, object, slot, rva);
 }
 
 struct saved_value { HKEY key; const wchar_t *name; DWORD previous, written; bool existed, changed; };
@@ -55,16 +59,119 @@ static BOOL WINAPI on_control(DWORD control)
     return TRUE;
 }
 
+/* ml1990: ask Valve's client to prepare the user's licensed custom
+ * executables (CEG) before LaunchApp, as desktop Steam does. Valve's client
+ * reads the files to prepare from the app manifest, extracts their DRM
+ * identifiers, and requests the per-user binaries from Valve with this
+ * account's own licence. Dock never creates, alters or bypasses them.
+ *
+ * IClientUserMap slot 71 (both pinned builds): EResult(uint32 AppID,
+ * bool bForce, bool bFailFastWhenBusy, uint32 *pJobsStarted). The wrapper
+ * sends the pointer's value to the in-process engine, which writes the job
+ * count before the call returns; it is never NULL. bForce=false keeps
+ * Valve's own identifier extraction (true skips it and reports success
+ * without preparing anything). bFailFastWhenBusy=false keeps Valve's own
+ * server retry policy; this host bounds the total wait instead.
+ */
+#define SH_CEG_WAIT_MS (5ULL * 60 * 1000)
+#define SH_CEG_BUSY_RETRY_MS 10000
+typedef int32_t (__thiscall *ceg_request_fn)(void *, uint32_t, bool, bool, uint32_t *);
+
+static bool wide_flag(const wchar_t *name, wchar_t expected)
+{
+    wchar_t value[4] = {0};
+    return GetEnvironmentVariableW(name, value, 4) == 1 && value[0] == expected;
+}
+
+/* Returns 0 once every started job reported success, otherwise 49 (or 12
+ * for a malformed callback). Only numeric results are reported: no paths.
+ */
+static int prepare_custom_binaries(HMODULE module, void *client_user,
+                                   const struct sh_api *api, const struct sh_observer *o,
+                                   int32_t pipe, uint32_t appid,
+                                   const struct dock_client_layout *layout)
+{
+    if (!layout->ceg_request || !method_is(module, client_user, 71, layout->ceg_request)) {
+        o->event("ceg-unsupported-client", 1);
+        o->event("ceg-result", -2);
+        return 49;
+    }
+    struct sh_ceg_progress progress = {0};
+    uint64_t begin = o->now_ms(), retry_at = begin;
+    bool waiting = false;
+    unsigned busy = 0, logged_jobs = 0;
+    int32_t logged_reply = INT32_MIN;
+    while (!InterlockedCompareExchange(&interrupted, 0, 0)) {
+        uint64_t now = o->now_ms();
+        if (now - begin >= SH_CEG_WAIT_MS) {
+            o->event("ceg-finished-jobs", (int32_t)progress.finished);
+            o->event("ceg-result", -1);
+            return 49;
+        }
+        if (!waiting && now >= retry_at) {
+            uint32_t jobs = UINT32_MAX;
+            int32_t status = ((ceg_request_fn)(*(void ***)client_user)[71])(
+                client_user, appid, false, false, &jobs);
+            enum sh_ceg_step step = sh_ceg_request_step(status, jobs, &progress);
+            if (step == SH_CEG_RETRY) {
+                if (busy++ == 0) o->event("ceg-request-busy", status);
+                retry_at = now + SH_CEG_BUSY_RETRY_MS;
+            } else {
+                o->event("ceg-request-result", status);
+                o->event("ceg-request", jobs == UINT32_MAX ? -1 : (int32_t)jobs);
+                if (step != SH_CEG_WAIT) {
+                    o->event("ceg-result", progress.failure);
+                    return 49;
+                }
+                waiting = true;
+            }
+        }
+        for (unsigned batch = 0; batch < 64; ++batch) {
+            struct sh_callback cb = {0};
+            if (!api->get_callback(pipe, &cb)) break;
+            bool valid = cb.id > 0 && cb.size >= 0 && (!cb.size || cb.data);
+            enum sh_ceg_step step = SH_CEG_WAIT;
+            int32_t value = 0;
+            if (valid && cb.id == SH_CEG_JOB_FINISHED &&
+                sh_decode_ceg_job(cb.data, (size_t)cb.size, appid, &value)) {
+                /* A finish before any accepted request cannot be counted. */
+                if (waiting) step = sh_ceg_record_job(&progress, value);
+                if (waiting && (value != 1 || logged_jobs++ < 8)) o->event("ceg-job-result", value);
+            } else if (valid && cb.id == SH_CEG_SERVER_REPLY &&
+                       sh_decode_ceg_reply(cb.data, (size_t)cb.size, appid, &value) &&
+                       value != logged_reply) {
+                o->event("ceg-server-result", value);
+                logged_reply = value;
+            }
+            api->free_callback(pipe);
+            if (!valid) return SH_CALLBACK_INVALID;
+            if (step == SH_CEG_DONE) {
+                o->event("ceg-result", 1);
+                return 0;
+            }
+            if (step == SH_CEG_FAIL) {
+                o->event("ceg-finished-jobs", (int32_t)progress.finished);
+                o->event("ceg-result", progress.failure);
+                return 49;
+            }
+        }
+        o->sleep_ms(50);
+    }
+    o->event("ceg-result", -3);
+    return 49;
+}
+
 int sh_launch(HMODULE module, void *engine, void *client_user,
               const struct sh_api *api, const struct sh_observer *o,
-              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid)
+              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid,
+              const struct dock_client_layout *layout)
 {
-    if (!method_is(module, engine, 43, 0x970d30) ||
-        !method_is(module, engine, 33, 0x970ba0) ||
-        !method_is(module, client_user, 67, 0x7324e0)) return 40;
+    if (!layout || !method_is(module, engine, 43, layout->engine_manager) ||
+        !method_is(module, engine, 33, layout->engine_result) ||
+        !method_is(module, client_user, 67, layout->running)) return 40;
     void *manager = ((get_manager_fn)(*(void ***)engine)[43])(engine, user, pipe);
-    if (!method_is(module, manager, 2, 0x83f0f0) ||
-        !method_is(module, manager, 5, 0x758760)) return 40;
+    if (!method_is(module, manager, 2, layout->launch) ||
+        !method_is(module, manager, 5, layout->install_dir)) return 40;
     static char actual_utf8[32768];
     static wchar_t actual[32768], expected[32768], normalized[32768];
     DWORD length = GetEnvironmentVariableW(L"MADEIRA_STEAM_HOST_EXPECTED_INSTALL", expected, 32768);
@@ -82,6 +189,30 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     HKEY active = NULL, machine = NULL;
     int result = 42;
     struct saved_value values[3] = {0};
+    /* ml1990: the public app sets MADEIRA_STEAM_HOST_CEG=1 only for an app
+     * whose depot manifests flag CustomExecutable files, and records them in
+     * the manifest's CheckGuid block. Failure never launches the game.
+     * MADEIRA_DOCK_CEG=0 restores the previous direct LaunchApp.
+     */
+    if (wide_flag(L"MADEIRA_STEAM_HOST_CEG", L'1')) {
+        if (wide_flag(L"MADEIRA_DOCK_CEG", L'0')) o->event("ceg-disabled", 1);
+        else {
+            /* ml2000: Valve's client reaches its own client service through
+             * the service manager; start Wine's if this session lacks one.
+             * It stays up for the game run and is ended at host exit.
+             * MADEIRA_DOCK_CEG_SCM=0 restores the ml1990 behaviour.
+             */
+            int32_t scm = wide_flag(L"MADEIRA_DOCK_CEG_SCM", L'0') ? 0 : sh_ceg_scm_prepare(o, module);
+            if (scm) {
+                o->event("ceg-result", scm);
+                result = 49;
+                goto done;
+            }
+            result = prepare_custom_binaries(module, client_user, api, o, pipe, appid, layout);
+            if (result) goto done;
+            result = 42;
+        }
+    }
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam\\ActiveProcess", 0,
                      KEY_QUERY_VALUE | KEY_SET_VALUE, &active) != ERROR_SUCCESS ||
         RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Valve\\Steam", 0,
@@ -99,6 +230,17 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     if (!call) { result = 43; goto done; }
     uint64_t begin = o->now_ms(), stopped_at = 0;
     bool seen_running = false, result_received = false, result_rejected = false;
+    /* ml1970: a content refusal keeps Valve's client alive while it installs
+     * what the launch needs, then asks it again. It never turns a refusal
+     * into a launch: only Valve's own later success starts the game.
+     * MADEIRA_DOCK_CONTENT_WAIT=0 restores the immediate failure.
+     */
+    wchar_t wait_flag[4] = {0};
+    bool content_wait = !(GetEnvironmentVariableW(L"MADEIRA_DOCK_CONTENT_WAIT", wait_flag, 4) == 1 &&
+                          wait_flag[0] == L'0');
+    uint64_t wait_began = 0, retry_at = 0;
+    unsigned retries = 0;
+    int32_t logged_error = INT32_MIN;
     result = 44;
     while (!InterlockedCompareExchange(&interrupted, 0, 0)) {
         for (unsigned batch = 0; batch < 64; ++batch) {
@@ -124,11 +266,28 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
                             engine, pipe, call, payload, sizeof(payload), kind, &failed);
                     int32_t error = -1;
                     bool decoded = read && !failed && sh_decode_launch_result(payload, size, gameid, &error);
-                    o->event("launch-result-kind", kind);
-                    o->event("launch-result-size", (int32_t)size);
-                    o->event("launch-client-error", error);
+                    /* Repeated requests while waiting report only changes,
+                     * keeping the bounded report file small.
+                     */
+                    if (error != logged_error || !decoded) {
+                        o->event("launch-result-kind", kind);
+                        o->event("launch-result-size", (int32_t)size);
+                        o->event("launch-client-error", error);
+                        logged_error = error;
+                    }
                     result_received = decoded && error == 0;
                     result_rejected = !result_received;
+                    if (result_received && wait_began) o->event("launch-update-ready", (int32_t)retries);
+                    if (!result_received && decoded && content_wait && !seen_running &&
+                        sh_launch_error_waits_for_content(error) &&
+                        (!wait_began || o->now_ms() - wait_began < SH_CONTENT_WAIT_MS)) {
+                        if (!wait_began) {
+                            wait_began = o->now_ms();
+                            o->event("launch-update-wait", error);
+                        }
+                        retry_at = o->now_ms() + sh_launch_retry_delay_ms(retries);
+                        result_rejected = false;
+                    }
                     /* A game can start before this callback is decoded. Keep
                      * serving it until exit even if a result is rejected.
                      */
@@ -141,6 +300,7 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
         if (running && !seen_running) {
             o->event("launch-game-running", 1);
             seen_running = true;
+            retry_at = 0;
         }
         if (running) stopped_at = 0;
         else if (seen_running) {
@@ -151,7 +311,19 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
                 break;
             }
         }
-        if (!seen_running && result_rejected && o->now_ms() - begin > 5000) { result = 45; break; }
+        if (retry_at && !seen_running && o->now_ms() >= retry_at) {
+            retry_at = 0;
+            call = ((launch_fn)(*(void ***)manager)[2])(manager, &gameid, 0, 0, "");
+            ++retries;
+            if (retries <= 3 || retries % 60 == 0) o->event("launch-update-retry", (int32_t)retries);
+            if (!call) { result = 43; goto done; }
+            begin = o->now_ms();
+        }
+        if (retry_at) { o->sleep_ms(50); continue; }
+        if (!seen_running && result_rejected && o->now_ms() - begin > 5000) {
+            result = wait_began ? 48 : 45;
+            break;
+        }
         if (!seen_running && o->now_ms() - begin > 90000) break;
         o->sleep_ms(50);
     }
@@ -178,10 +350,11 @@ done:
 #else
 int sh_launch(HMODULE module, void *engine, void *client_user,
               const struct sh_api *api, const struct sh_observer *o,
-              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid)
+              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid,
+              const struct dock_client_layout *layout)
 {
     (void)module; (void)engine; (void)client_user; (void)api; (void)o;
-    (void)pipe; (void)user; (void)steamid; (void)appid;
+    (void)pipe; (void)user; (void)steamid; (void)appid; (void)layout;
     return 40;
 }
 #endif

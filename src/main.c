@@ -16,17 +16,23 @@
 #include <wchar.h>
 #include "probe.h"
 #include "session.h"
+#include "scm.h"
 
 #define PATH_CAP 32768
 static FILE *report;
-static bool exact_client;
+static const struct dock_client_layout *client_layout;
 
 static void event(const char *stage, int32_t value)
 {
-    fprintf(stderr, "[steam-host] ml1830 %s=%ld\n", stage, (long)value);
+    const char *round = !strncmp(stage, "ceg-scm", 7) || !strncmp(stage, "ceg-service-", 12) ? "ml2000" :
+        !strncmp(stage, "ceg-", 4) ? "ml1990" :
+        !strncmp(stage, "launch-update-", 14) ? "ml1970" :
+        !strncmp(stage, "session-handoff-", 16) ? "ml1870" :
+        !strcmp(stage, "session-client-adapter") ? "ml1860" : "ml1830";
+    fprintf(stderr, "[steam-host] %s %s=%ld\n", round, stage, (long)value);
     fflush(stderr);
     if (report) {
-        fprintf(report, "[steam-host] ml1830 %s=%ld\n", stage, (long)value);
+        fprintf(report, "[steam-host] %s %s=%ld\n", round, stage, (long)value);
         fflush(report);
     }
 }
@@ -132,7 +138,12 @@ static bool identify_client(HANDLE file)
     }
     if (!CryptGetHashParam(hash, HP_HASHVAL, digest, &size, 0) || size != 32) goto done;
     for (unsigned i = 0; i < 32; ++i) sprintf(hex + i * 2, "%02x", digest[i]);
-    exact_client = !strcmp(hex, "caba4826aa3501039d095aee1843a6bfb270fb43a3ab4455b2d6733223579fee");
+    client_layout = dock_client_layout(hex);
+    if (client_layout && client_layout->revision == 202601) {
+        const char *compat = getenv("MADEIRA_DOCK_CLIENT_202601");
+        if (compat && !strcmp(compat, "0")) client_layout = NULL;
+    }
+    event("session-client-adapter", client_layout ? client_layout->revision : 0);
     fprintf(stderr, "[steam-host] ml1820 client-sha256=%s\n", hex);
     fflush(stderr);
     if (report) {
@@ -155,6 +166,7 @@ static FARPROC symbol(HMODULE module, const char *name)
 
 static uint64_t now_ms(void) { return GetTickCount64(); }
 static void sleep_ms(uint32_t ms) { Sleep(ms); }
+static const struct sh_observer host_observer = {now_ms, sleep_ms, event};
 
 /* BShutdownIfAllPipesClosed is slot 23 in the public SteamClient021 ABI,
  * including GetISteamGameSearch and the reserved RunFrame slot. Verified
@@ -247,11 +259,9 @@ int main(void)
     if (!engine) goto done;
 
     if (enabled(L"MADEIRA_STEAM_HOST_SESSION")) {
-        const struct sh_observer observer = {now_ms, sleep_ms, event};
-        result = sh_session(module, engine, &api, &observer, exact_client);
+        result = sh_session(module, engine, &api, &host_observer, client_layout);
     } else if (enabled(L"MADEIRA_STEAM_HOST_BOOTSTRAP")) {
-        const struct sh_observer observer = {now_ms, sleep_ms, event};
-        result = sh_probe_bootstrap(&api, &observer);
+        result = sh_probe_bootstrap(&api, &host_observer);
     } else {
         event("bootstrap-disabled", 1);
         result = SH_OK;
@@ -267,6 +277,11 @@ done:
         event("shutdown-complete", stopped ? 1 : 0);
         if (!stopped && result == SH_OK) result = SH_RELEASE_FAILED;
     }
+    /* ml2000: after Valve's client has shut down, end the service manager
+     * this host started for CEG (no-op when it was already running), so a
+     * leftover service process cannot keep the app's session alive.
+     */
+    sh_ceg_scm_release(&host_observer);
     if (!enabled(L"MADEIRA_STEAM_HOST_SESSION"))
         event("ownership-unchecked-game-launch-disabled", 1);
     event("probe-result", result);

@@ -22,15 +22,11 @@ typedef void (__thiscall *token_fn)(void *, const char *, const char *);
 typedef bool (__thiscall *subscribed_fn)(void *, uint32_t);
 typedef int32_t (__thiscall *subscriptions_fn)(void *, uint32_t *, int32_t, bool);
 
-/* These RVAs identify the exact September 2026 DLL, not a portable private
- * ABI. The SHA-256 gate in main.c is mandatory before any private call.
- * Slot names were independently checked against the DLL's RTTI map and IPC
- * method strings, then signatures against the OpenSteamworks declarations.
- * Unsupported versions fail closed rather than calling guessed methods.
- */
+/* Each layout has an exact SHA-256 gate and independently inspected methods.
+ * Unsupported versions fail closed before any private call. */
 static bool method_is(HMODULE module, void *object, unsigned slot, uintptr_t rva)
 {
-    return (*(void ***)object)[slot] == (void *)((uintptr_t)module + rva);
+    return dock_method_is((uintptr_t)module, object, slot, rva);
 }
 
 static bool enabled(const char *name)
@@ -40,12 +36,12 @@ static bool enabled(const char *name)
 }
 
 int sh_session(HMODULE module, void *engine, const struct sh_api *api,
-               const struct sh_observer *o, bool exact_client)
+               const struct sh_observer *o, const struct dock_client_layout *layout)
 {
     int result = 30;
     struct dock_auth auth = {0};
     int32_t pipe = 0, user = 0;
-    if (!exact_client || !method_is(module, engine, 8, 0x972ff0)) {
+    if (!layout || !method_is(module, engine, 8, layout->engine_user)) {
         o->event("session-unsupported-client", 1);
         return result;
     }
@@ -55,8 +51,9 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     if (!client_user) goto done;
     o->event("session-user-vtable-rva", (int32_t)((uintptr_t)*(void **)client_user - (uintptr_t)module));
     const struct { unsigned slot; uintptr_t rva; } methods[] = {
-        {1, 0x8412f0}, {4, 0x736110}, {6, 0x729a20},
-        {49, 0x72ee00}, {50, 0x859860}, {56, 0x869f80}, {181, 0x735670}, {182, 0x792860}
+        {1, layout->logon}, {4, layout->logged_on}, {6, layout->connected},
+        {49, layout->cached}, {50, layout->select_account}, {56, layout->token},
+        {181, layout->subscribed}, {182, layout->subscriptions}
     };
     for (unsigned i = 0; i < sizeof(methods)/sizeof(methods[0]); ++i) {
         if (!method_is(module, client_user, methods[i].slot, methods[i].rva)) {
@@ -83,7 +80,13 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     DWORD handoff_size = GetEnvironmentVariableW(L"MADEIRA_DOCK_AUTH_FILE", handoff, 32768);
     bool native_auth = handoff_size > 0;
     if (native_auth) {
-        if (handoff_size >= 32768 || !dock_auth_consume(handoff, &auth)) {
+        struct dock_auth_failure failure = {DOCK_AUTH_PATH, 0};
+        if (handoff_size >= 32768 || !dock_auth_consume_diagnostic(handoff, &auth, &failure)) {
+            const char *diagnostics = getenv("MADEIRA_DOCK_HANDOFF_DIAGNOSTICS");
+            if (!diagnostics || strcmp(diagnostics, "0")) {
+                o->event("session-handoff-stage", failure.stage);
+                o->event("session-handoff-error", (int32_t)failure.error);
+            }
             o->event("session-native-handoff-invalid", 1);
             result = 37; goto done;
         }
@@ -168,7 +171,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
                 o->event("session-invalid-app-query", ((subscribed_fn)v[181])(client_user, UINT32_MAX));
                 result = listed ? 0 : 35;
                 if (!result && enabled("MADEIRA_STEAM_HOST_LAUNCH"))
-                    result = sh_launch(module, engine, client_user, api, o, pipe, user, id, (uint32_t)app);
+                    result = sh_launch(module, engine, client_user, api, o, pipe, user, id, (uint32_t)app, layout);
                 break;
             }
         }
@@ -183,9 +186,9 @@ done:
 }
 #else
 int sh_session(HMODULE module, void *engine, const struct sh_api *api,
-               const struct sh_observer *o, bool exact_client)
+               const struct sh_observer *o, const struct dock_client_layout *layout)
 {
-    (void)module; (void)engine; (void)api; (void)exact_client;
+    (void)module; (void)engine; (void)api; (void)layout;
     o->event("session-requires-64-bit-host", 1);
     return 30;
 }

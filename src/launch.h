@@ -5,5 +5,6 @@
 #include "session.h"
 int sh_launch(HMODULE module, void *engine, void *client_user,
               const struct sh_api *api, const struct sh_observer *o,
-              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid);
+              int32_t pipe, int32_t user, uint64_t steamid, uint32_t appid,
+              const struct dock_client_layout *layout);
 #endif

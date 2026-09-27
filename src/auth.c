@@ -47,28 +47,50 @@ bool dock_auth_parse(const unsigned char *bytes, size_t size, struct dock_auth *
 }
 
 #ifdef _WIN32
-bool dock_auth_consume(const wchar_t *path, struct dock_auth *out)
+bool dock_auth_consume_diagnostic(const wchar_t *path, struct dock_auth *out,
+                                  struct dock_auth_failure *failure)
 {
     unsigned char bytes[DOCK_AUTH_MAX];
     DWORD read = 0;
     LARGE_INTEGER size;
     bool ok = false;
+    *failure = (struct dock_auth_failure){0};
     dock_auth_clear(out, sizeof(*out));
     /* Exclusive open and delete-on-close: the file is gone before login.
      * Reparse points are not followed. iOS also deletes any unconsumed file
      * after launch failure, session exit, sign-out, and the next app start. */
     HANDLE file = CreateFileW(path, GENERIC_READ | DELETE, 0, NULL, OPEN_EXISTING,
                              FILE_FLAG_DELETE_ON_CLOSE | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-    if (file == INVALID_HANDLE_VALUE) return false;
+    if (file == INVALID_HANDLE_VALUE) {
+        *failure = (struct dock_auth_failure){DOCK_AUTH_OPEN, GetLastError()};
+        return false;
+    }
     BY_HANDLE_FILE_INFORMATION info;
-    if (GetFileInformationByHandle(file, &info) &&
-        !(info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) &&
-        GetFileSizeEx(file, &size) && size.QuadPart >= 24 && size.QuadPart <= DOCK_AUTH_MAX &&
-        ReadFile(file, bytes, (DWORD)size.QuadPart, &read, NULL) && read == size.QuadPart)
-        ok = dock_auth_parse(bytes, read, out);
-    if (!CloseHandle(file)) ok = false;
+    if (!GetFileInformationByHandle(file, &info))
+        *failure = (struct dock_auth_failure){DOCK_AUTH_INFO, GetLastError()};
+    else if (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+        failure->stage = DOCK_AUTH_TYPE;
+    else if (!GetFileSizeEx(file, &size))
+        *failure = (struct dock_auth_failure){DOCK_AUTH_SIZE, GetLastError()};
+    else if (size.QuadPart < 24 || size.QuadPart > DOCK_AUTH_MAX)
+        failure->stage = DOCK_AUTH_BOUNDS;
+    else if (!ReadFile(file, bytes, (DWORD)size.QuadPart, &read, NULL))
+        *failure = (struct dock_auth_failure){DOCK_AUTH_READ, GetLastError()};
+    else if (read != size.QuadPart)
+        failure->stage = DOCK_AUTH_READ;
+    else if (!(ok = dock_auth_parse(bytes, read, out)))
+        failure->stage = DOCK_AUTH_PARSE;
+    if (!CloseHandle(file)) {
+        if (!failure->stage) *failure = (struct dock_auth_failure){DOCK_AUTH_CLOSE, GetLastError()};
+        ok = false;
+    }
     dock_auth_clear(bytes, sizeof(bytes));
     if (!ok) dock_auth_clear(out, sizeof(*out));
     return ok;
+}
+bool dock_auth_consume(const wchar_t *path, struct dock_auth *out)
+{
+    struct dock_auth_failure failure;
+    return dock_auth_consume_diagnostic(path, out, &failure);
 }
 #endif

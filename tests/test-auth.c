@@ -27,15 +27,30 @@ int main(void)
     HANDLE file = CreateFileW(path, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, 0, NULL);
     assert(file != INVALID_HANDLE_VALUE);
     DWORD written;
+    struct dock_auth_failure failure;
     assert(WriteFile(file, bytes, 33, &written, NULL) && written == 33);
-    assert(!dock_auth_consume(path, &auth)); /* Locked transfers cannot be read. */
+    assert(!dock_auth_consume_diagnostic(path, &auth, &failure));
+    assert(failure.stage == DOCK_AUTH_OPEN && failure.error == ERROR_SHARING_VIOLATION);
     assert(CloseHandle(file));
-    assert(dock_auth_consume(path, &auth));
+    assert(dock_auth_consume_diagnostic(path, &auth, &failure));
+    assert(!failure.stage && !failure.error);
     assert(GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES);
-    assert(!dock_auth_consume(path, &auth)); /* Cannot replay a consumed file. */
+    assert(!dock_auth_consume_diagnostic(path, &auth, &failure));
+    assert(failure.stage == DOCK_AUTH_OPEN && failure.error == ERROR_FILE_NOT_FOUND);
     assert(GetTempFileNameW(folder, L"mdt", 0, path));
-    assert(!dock_auth_consume(path, &auth)); /* Empty/malformed is removed too. */
+    assert(!dock_auth_consume_diagnostic(path, &auth, &failure));
+    assert(failure.stage == DOCK_AUTH_BOUNDS && !failure.error);
     assert(GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES);
+    assert(GetTempFileNameW(folder, L"mdt", 0, path));
+    file = CreateFileW(path, GENERIC_WRITE, 0, NULL, TRUNCATE_EXISTING, 0, NULL);
+    assert(file != INVALID_HANDLE_VALUE);
+    bytes[0] = 'X';
+    assert(WriteFile(file, bytes, 33, &written, NULL) && written == 33);
+    assert(CloseHandle(file));
+    assert(!dock_auth_consume_diagnostic(path, &auth, &failure));
+    assert(failure.stage == DOCK_AUTH_PARSE && !failure.error);
+    assert(GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES);
+    bytes[0] = 'M';
 #endif
     for (size_t size = 0; size < 33; ++size) assert(!dock_auth_parse(bytes, size, &auth));
     assert(!dock_auth_parse(bytes, 34, &auth));

@@ -1,0 +1,31 @@
+/* SPDX-License-Identifier: LicenseRef-Madeira-Dock-Proprietary
+ * MADEIRA_DOCK_PRIVATE_SOURCE */
+#include "client_layout.h"
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+int main(void)
+{
+    const struct dock_client_layout *jan = dock_client_layout(
+        "71b391fe9f3e2006cbc81a5c75eef3eb4186012deabfdb2c8b7e8d4850ecf640");
+    const struct dock_client_layout *sep = dock_client_layout(
+        "caba4826aa3501039d095aee1843a6bfb270fb43a3ab4455b2d6733223579fee");
+    assert(jan && sep && jan != sep && jan->revision == 202601 && sep->revision == 202609);
+    assert(!dock_client_layout(NULL) && !dock_client_layout("") && !dock_client_layout("71b391fe"));
+    char changed[66]; strcpy(changed, jan->sha256); changed[63] = '1';
+    assert(!dock_client_layout(changed));
+    strcpy(changed, jan->sha256); strcat(changed, "0");
+    assert(!dock_client_layout(changed));
+    uintptr_t base = 0x10000000;
+    void *vtable[183] = {0}; void **object = vtable;
+    vtable[8] = (void *)(base + jan->engine_user);
+    assert(dock_method_is(base, &object, 8, jan->engine_user));
+    assert(!dock_method_is(base, &object, 8, sep->engine_user));
+    assert(!dock_method_is(base, &object, 7, jan->engine_user));
+    assert(jan->ceg_request == 0x82a8c0 && sep->ceg_request == 0x84e8b0);
+    assert(!dock_method_is(base + 1, &object, 8, jan->engine_user));
+    assert(!dock_method_is(base, NULL, 8, jan->engine_user));
+    object = NULL;
+    assert(!dock_method_is(base, &object, 8, jan->engine_user));
+    puts("PASS: exact client selection, unknown/partial/changed hash rejection and mismatched method rejection");
+}

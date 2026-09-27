@@ -23,3 +23,131 @@ bool sh_decode_launch_result(const void *payload, size_t size, uint64_t expected
     memcpy(error, (const char *)payload+8, sizeof(*error));
     return true;
 }
+
+/* ml1970: Valve's client refuses a launch while the app, or an app owning one
+ * of its shared depots, still needs content: 17 dependency not ready,
+ * 19 update required, 20 still busy. Desktop Steam lets its client finish
+ * that update and then starts the game; the host keeps Valve's client alive
+ * and asks again. Every other result, including licence and connection
+ * failures, still fails closed.
+ */
+bool sh_launch_error_waits_for_content(int32_t error)
+{
+    return error == 17 || error == 19 || error == 20;
+}
+
+/* 10 s, 20 s, then every 30 s: the client schedules its update after the
+ * first refusal, so later requests only confirm that it has finished.
+ */
+uint32_t sh_launch_retry_delay_ms(unsigned attempt)
+{
+    return attempt == 0 ? 10000 : attempt == 1 ? 20000 : 30000;
+}
+
+/* ml1990: Valve's client customizes CustomExecutable files per user. Its
+ * RequestCustomBinaries returns an EResult and writes the number of per-file
+ * jobs it started; each job then posts its own EResult for this AppID. Only
+ * k_EResultOK (1) from every started job counts as success. Busy (10) means
+ * the app is currently updating or running and may be asked again. Any
+ * other result, including OK with zero jobs, fails closed: without prepared
+ * binaries the protected executable cannot start.
+ */
+static bool decode_ceg(const void *payload, size_t size, size_t expected,
+                       uint32_t appid, int32_t *result)
+{
+    uint32_t returned;
+    if (!payload || !result || size != expected || !appid) return false;
+    memcpy(&returned, (const char *)payload+4, sizeof(returned));
+    if (returned != appid) return false;
+    memcpy(result, payload, sizeof(*result));
+    return true;
+}
+
+bool sh_decode_ceg_job(const void *payload, size_t size, uint32_t appid, int32_t *result)
+{
+    return decode_ceg(payload, size, 8, appid, result);
+}
+
+bool sh_decode_ceg_reply(const void *payload, size_t size, uint32_t appid, int32_t *result)
+{
+    return decode_ceg(payload, size, 12, appid, result);
+}
+
+enum sh_ceg_step sh_ceg_request_step(int32_t result, uint32_t jobs, struct sh_ceg_progress *progress)
+{
+    if (!progress) return SH_CEG_FAIL;
+    if (result == 10) return SH_CEG_RETRY;
+    if (result != 1 || !jobs || jobs > SH_CEG_MAX_JOBS) {
+        progress->failure = result == 1 ? 0 : result;
+        return SH_CEG_FAIL;
+    }
+    *progress = (struct sh_ceg_progress){jobs, 0, 0};
+    return SH_CEG_WAIT;
+}
+
+enum sh_ceg_step sh_ceg_record_job(struct sh_ceg_progress *progress, int32_t result)
+{
+    if (!progress || !progress->expected || progress->finished >= progress->expected)
+        return SH_CEG_FAIL;
+    if (result != 1) {
+        progress->failure = result;
+        return SH_CEG_FAIL;
+    }
+    return ++progress->finished == progress->expected ? SH_CEG_DONE : SH_CEG_WAIT;
+}
+
+/* ml2000: Wine's sechost reports a missing \pipe\svcctl listener as
+ * RPC_S_SERVER_UNAVAILABLE (1722). Only that means "no service manager": any
+ * other failure (for example access denied) is not fixed by starting one.
+ * RPC_S_SERVER_TOO_BUSY (1723) can occur while a new manager is starting.
+ */
+bool sh_scm_error_means_absent(uint32_t error)
+{
+    return error == 1722;
+}
+
+bool sh_scm_error_retryable(uint32_t error)
+{
+    return error == 1722 || error == 1723;
+}
+
+int32_t sh_ceg_scm_result(bool manager_reachable, bool service_registered)
+{
+    if (!manager_reachable) return SH_CEG_SCM_UNAVAILABLE;
+    return service_registered ? 0 : SH_CEG_SERVICE_UNREGISTERED;
+}
+
+uint32_t sh_remaining_ms(uint64_t now, uint64_t begin, uint64_t bound)
+{
+    uint64_t elapsed = now >= begin ? now - begin : 0;
+    if (elapsed >= bound) return 0;
+    uint64_t left = bound - elapsed;
+    return left > UINT32_MAX - 1 ? UINT32_MAX - 1 : (uint32_t)left;
+}
+
+/* A service counts as stopped only when the manager reports it stopped and
+ * its process is gone; a process that outlives the bound is ended by the host.
+ */
+enum sh_service_stop sh_service_stop_outcome(bool was_running, bool stopped_by_manager,
+                                             bool process_gone, bool ended_by_host)
+{
+    if (!was_running) return SH_SERVICE_NOT_RUNNING;
+    if (stopped_by_manager && process_gone) return SH_SERVICE_STOPPED;
+    if (ended_by_host) return SH_SERVICE_ENDED_AFTER_BOUND;
+    return SH_SERVICE_STOP_FAILED;
+}
+
+/* Never re-run the installer over an existing registration or when the
+ * service manager answered with an unexpected error (fail closed as -5).
+ */
+bool sh_should_install_service(bool registered, bool missing, bool install_enabled)
+{
+    return install_enabled && !registered && missing;
+}
+
+int32_t sh_service_install_report(bool file_present, bool finished, uint32_t exit_code)
+{
+    if (!file_present) return SH_SERVICE_INSTALL_MISSING;
+    if (!finished) return SH_SERVICE_INSTALL_TIMEOUT;
+    return (int32_t)exit_code;
+}

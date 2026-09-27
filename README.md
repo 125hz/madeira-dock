@@ -1,8 +1,23 @@
 # Madeira Dock (private)
 
-Round ml1830, Windows proof of concept and initial iOS integration. This executable loads the user's
+Host ml1870, with authenticated device launch confirmed in the ml1880 notes.
+This executable loads the user's
 installed, unmodified Valve client. It does not replace Steam APIs or remove
 game protection. No Valve binaries are included in this source directory.
+
+## Device confirmation — ml1880 public performance trial
+
+Logs 62/63 from public Madeira ml1870 report authenticated online status and
+requested-app subscription membership. The owner confirms the installed
+32-bit game runs on iOS through Dock, with roughly 2.9 GB total app memory.
+This supersedes earlier unproven-device notes below. It does not prove
+clean-prefix setup, all games, revocation handling or all multiplayer APIs.
+The private host executable is unchanged. Public ml1880 tests a smaller
+512 MiB Dock JIT pool (desktop recovery preserved) and avoids guest D3D9
+per-call census work during normal gameplay. Gains need device A/B testing.
+Read the sibling docs/MADEIRA_DOCK.md for rollback and test instructions.
+Private source separation, original Valve libraries, real authentication,
+subscription checks and original game DRM remain mandatory.
 
 ## Current operation
 
@@ -18,8 +33,8 @@ game on C:, one 64-bit Steamworks game on C:, and another on D:. Desktop
 menu crash did not reproduce; the owner confirmed the retry worked and said
 they likely closed the first attempt accidentally. This is startup/smoke
 validation, not extended gameplay coverage. A host exit of zero records host
-lifecycle success. Wine/iOS and live native-token authentication have not been
-tested on a device. The handoff parser and Windows file consumption are tested
+lifecycle success. Wine/iOS and live native-token authentication are now confirmed for the
+limited device trial described above. The handoff parser and Windows file consumption are tested
 with synthetic credentials; those tests do not claim successful authentication.
 
 ## Private source and distribution
@@ -58,8 +73,8 @@ The iOS trial is off until `MADEIRA_DOCK=1` is set in madeira-env.txt. It still
 uses Valve's official installer to prepare client files, requires the pinned
 client version, and supports the default launch option without custom args.
 One native sign-in is intended to replace the desktop sign-in. Removing the
-installer, clean-prefix support and authenticated device launches are pending
-device evidence. `MADEIRA_DOCK=0` restores the existing desktop launch route.
+installer and clean-prefix support remain future work; the existing-prefix
+authenticated device launch is confirmed above. `MADEIRA_DOCK=0` restores the existing desktop launch route.
 
 **Private ABI support is limited to one independently inspected client build:**
 
@@ -142,7 +157,7 @@ but terminating the host while playing necessarily removes its client service.
 Known native diagnostics include failed overlay/injection-helper setup and
 socket binding warnings. No patch disables those checks. The helper warning
 did not prevent the first 32-bit game from reaching a visible window. Overlay,
-cloud, achievements, multiplayer, CEG preparation, connection-loss recovery,
+cloud, achievements, multiplayer, CEG (ml1990 requests it; ml2000 starts Wine's service manager for it; see HANDOFF), connection-loss recovery,
 refunded/revoked licences and full gameplay remain separate validation work.
 
 ## Build and checks
@@ -177,3 +192,38 @@ current binary layouts. Public shutdown slot 23 was checked against
 game-facing client requirements. GameNative's proprietary steamhost binaries
 were not reused; see its
 [third-party notices](https://github.com/utkarshdalal/GameNative/blob/master/THIRD_PARTY_NOTICES).
+
+## Device integration update — ml1870
+
+Log 61 passes the January adapter on-device, then rejects the native credential
+transfer before Steam login. Madeira fixes its assumption that Z: exists by
+using Wine's Unix namespace for the same protected Application Support file.
+Dock adds numeric operation/error diagnostics; see docs/HANDOFF.md for codes.
+MADEIRA_DOCK_HANDOFF_DIAGNOSTICS=0 disables these extra logs. No paths, account
+identifiers or token data are logged. Consumption, cleanup and real Valve
+authentication/ownership checks are unchanged. Device login remains unproven.
+
+## Previous device integration update — ml1860
+
+Log 60 confirms client loading works after ml1850. Its normal return 30 was
+the exact-client gate: the device has the official January DLL rather than the
+previous PC build. Dock now selects one of two exact, independently inspected
+layouts. See [CLIENT_LAYOUTS.md](docs/CLIENT_LAYOUTS.md) for provenance, ABI
+checks and limits. MADEIRA_DOCK_CLIENT_202601=0 disables the January adapter.
+The compatibility probe passes with login disabled; device token authentication
+and game launch remain unproven. Original authentication/ownership gates remain.
+Public Madeira ml1860 fixes normal-exit notification and safely includes bounded
+report fields in its exported log. Source stays here; only the stripped EXE
+and notices are staged into Madeira. No cached login or Valve DLL is bundled.
+
+## Previous device integration update — ml1850
+
+Log 59 from Madeira ml1840 confirms the x64 Dock EXE ran on Wine/FEX/iOS,
+then crashed during LoadLibraryExW before authentication. The public runtime
+kept a dead bcrypt executable mapping when coml2 reused its PE base and size.
+Madeira ml1850 retires image translations on unmap, adds independent host-exit
+reporting and repairs startup log controls. See sibling Madeira HANDOFF.md
+for precise evidence/tests. Dock implementation and binary are unchanged;
+live native-token authentication and device game launch remain unproven.
+Use Documents/madeira.cfg: env.MADEIRA_DOCK = 1. Legacy env-file instructions
+are superseded by canonical config (legacy files are now safely imported).
