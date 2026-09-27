@@ -13,6 +13,7 @@ bool sh_decode_launch_result(const void *payload, size_t size, uint64_t expected
 /* ml1970: Valve's launch refusals that mean "content is still being prepared". */
 bool sh_launch_error_waits_for_content(int32_t error);
 uint32_t sh_launch_retry_delay_ms(unsigned attempt);
+bool sh_launch_error_waits_for_config(int32_t error);
 
 /* ml1990: Valve custom-executable (CEG) preparation. Callback 1020025 is
  * posted once per per-file job: int32 EResult, uint32 AppID (8 bytes).

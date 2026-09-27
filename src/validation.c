@@ -37,6 +37,17 @@ bool sh_launch_error_waits_for_content(int32_t error)
     return error == 17 || error == 19 || error == 20;
 }
 
+/* ml2011: 22 invalid app config and 23 invalid depot config also come back when
+ * Valve's client has not yet received the app's configuration from Steam after
+ * signing in (a freshly started client begins with an empty app-info cache).
+ * The host asks again for a bounded time; a genuinely broken configuration
+ * still fails closed once the bound passes.
+ */
+bool sh_launch_error_waits_for_config(int32_t error)
+{
+    return error == 22 || error == 23;
+}
+
 /* 10 s, 20 s, then every 30 s: the client schedules its update after the
  * first refusal, so later requests only confirm that it has finished.
  */

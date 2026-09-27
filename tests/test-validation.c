@@ -36,6 +36,9 @@ int main(void)
     assert(!sh_launch_error_waits_for_content(5));
     assert(!sh_launch_error_waits_for_content(6));
     assert(!sh_launch_error_waits_for_content(-1));
+    assert(sh_launch_error_waits_for_config(22) && sh_launch_error_waits_for_config(23));
+    assert(!sh_launch_error_waits_for_config(17) && !sh_launch_error_waits_for_config(24) &&
+           !sh_launch_error_waits_for_config(5) && !sh_launch_error_waits_for_config(0));
     assert(sh_launch_retry_delay_ms(0) == 10000 && sh_launch_retry_delay_ms(1) == 20000);
     assert(sh_launch_retry_delay_ms(2) == 30000 && sh_launch_retry_delay_ms(900) == 30000);
     unsigned char job[12] = {0};
@@ -100,5 +103,5 @@ int main(void)
     assert(sh_service_install_report(true, false, 0) == SH_SERVICE_INSTALL_TIMEOUT && SH_SERVICE_INSTALL_TIMEOUT == -1);
     assert(sh_service_install_report(true, true, 0) == 0 && sh_service_install_report(true, true, 5) == 5);
     assert(sh_service_install_report(true, true, 0xC0000005u) == (int32_t)0xC0000005u);
-    puts("steam-host: 80 entitlement-list, launch-result, content-wait, CEG and service-manager validation cases passed");
+    puts("steam-host: 86 entitlement-list, launch-result, content-wait, config-wait, CEG and service-manager validation cases passed");
 }
