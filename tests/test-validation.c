@@ -39,6 +39,8 @@ int main(void)
     assert(sh_launch_error_waits_for_config(22) && sh_launch_error_waits_for_config(23));
     assert(!sh_launch_error_waits_for_config(17) && !sh_launch_error_waits_for_config(24) &&
            !sh_launch_error_waits_for_config(5) && !sh_launch_error_waits_for_config(0));
+    assert(sh_launch_error_waits_for_session(35) && !sh_launch_error_waits_for_session(16) &&
+           !sh_launch_error_waits_for_session(22) && !sh_launch_error_waits_for_session(0));
     assert(sh_launch_retry_delay_ms(0) == 10000 && sh_launch_retry_delay_ms(1) == 20000);
     assert(sh_launch_retry_delay_ms(2) == 30000 && sh_launch_retry_delay_ms(900) == 30000);
     unsigned char job[12] = {0};
@@ -120,6 +122,6 @@ int main(void)
     assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_OFF), "off"));
     assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_FAILED), "failed"));
     assert(!strcmp(sh_install_scm_word(7), "failed"));
-    puts("steam-host: 101 entitlement-list, launch-result, content-wait, config-wait, CEG, service-manager "
+    puts("steam-host: 101 entitlement-list, launch-result, content-wait, config-wait, session-wait, CEG, service-manager "
          "and install-service-manager validation cases passed");
 }

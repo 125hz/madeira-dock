@@ -15,6 +15,8 @@
 #define SH_CONTENT_WAIT_MS (6ULL * 60 * 60 * 1000)
 #define SH_CONFIG_WAIT_MS (2ULL * 60 * 1000)   /* ml2011 */
 #define SH_CONFIG_RETRY_MS 5000
+#define SH_SESSION_WAIT_MS (3ULL * 60 * 1000)  /* ml2015 */
+#define SH_SESSION_RETRY_MS 15000
 
 #ifdef _WIN64
 typedef void *(__thiscall *get_manager_fn)(void *, int32_t, int32_t);
@@ -248,6 +250,17 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     bool config_wait = !(GetEnvironmentVariableW(L"MADEIRA_DOCK_CONFIG_WAIT", config_flag, 4) == 1 &&
                          config_flag[0] == L'0');
     uint64_t config_began = 0;
+    /* ml2015: "another session is playing" also comes back for a session that
+     * ended without telling Steam (the app was closed under a running game):
+     * Steam's servers keep it until that connection times out. The host asks
+     * again for a bounded time; a session that is really playing elsewhere
+     * still fails once the bound passes. MADEIRA_DOCK_SESSION_WAIT=0 fails
+     * immediately.
+     */
+    wchar_t session_flag[4] = {0};
+    bool session_wait = !(GetEnvironmentVariableW(L"MADEIRA_DOCK_SESSION_WAIT", session_flag, 4) == 1 &&
+                          session_flag[0] == L'0');
+    uint64_t session_began = 0;
     uint64_t wait_began = 0, retry_at = 0;
     unsigned retries = 0;
     int32_t logged_error = INT32_MIN;
@@ -308,6 +321,16 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
                         retry_at = o->now_ms() + SH_CONFIG_RETRY_MS;
                         result_rejected = false;
                     }
+                    else if (!result_received && decoded && session_wait && !seen_running &&
+                             sh_launch_error_waits_for_session(error) &&
+                             (!session_began || o->now_ms() - session_began < SH_SESSION_WAIT_MS)) {
+                        if (!session_began) {
+                            session_began = o->now_ms();
+                            o->event("launch-session-wait", error);
+                        }
+                        retry_at = o->now_ms() + SH_SESSION_RETRY_MS;
+                        result_rejected = false;
+                    }
                     /* A game can start before this callback is decoded. Keep
                      * serving it until exit even if a result is rejected.
                      */
@@ -342,6 +365,7 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
         if (retry_at) { o->sleep_ms(50); continue; }
         if (!seen_running && result_rejected && o->now_ms() - begin > 5000) {
             if (config_began) o->event("launch-config-gave-up", (int32_t)retries);
+            if (session_began) o->event("launch-session-gave-up", (int32_t)retries);
             result = wait_began ? 48 : 45;
             break;
         }

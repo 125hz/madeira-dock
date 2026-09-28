@@ -48,6 +48,12 @@ bool sh_launch_error_waits_for_config(int32_t error)
     return error == 22 || error == 23;
 }
 
+/* ml2015: 35, another session is playing on this account. */
+bool sh_launch_error_waits_for_session(int32_t error)
+{
+    return error == 35;
+}
+
 /* 10 s, 20 s, then every 30 s: the client schedules its update after the
  * first refusal, so later requests only confirm that it has finished.
  */

@@ -31,6 +31,7 @@ static void event(const char *stage, int32_t value)
         !strncmp(stage, "ceg-", 4) ? "ml1990" :
         !strncmp(stage, "launch-update-", 14) ? "ml1970" :
         !strncmp(stage, "launch-config-", 14) ? "ml2011" :
+        !strncmp(stage, "launch-session-", 15) ? "ml2015" :
         !strncmp(stage, "session-handoff-", 16) ? "ml1870" :
         !strcmp(stage, "session-client-adapter") ? "ml1860" : "ml1830";
     fprintf(stderr, "[steam-host] %s %s=%ld\n", round, stage, (long)value);
