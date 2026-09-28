@@ -103,5 +103,23 @@ int main(void)
     assert(sh_service_install_report(true, false, 0) == SH_SERVICE_INSTALL_TIMEOUT && SH_SERVICE_INSTALL_TIMEOUT == -1);
     assert(sh_service_install_report(true, true, 0) == 0 && sh_service_install_report(true, true, 5) == 5);
     assert(sh_service_install_report(true, true, 0xC0000005u) == (int32_t)0xC0000005u);
-    puts("steam-host: 86 entitlement-list, launch-result, content-wait, config-wait, CEG and service-manager validation cases passed");
+    /* ml2014: --start-services for the one-time-install batch. */
+    assert(sh_install_scm_should_spawn(true, 1722));
+    assert(!sh_install_scm_should_spawn(false, 1722));
+    assert(!sh_install_scm_should_spawn(true, 0) && !sh_install_scm_should_spawn(true, 1723) &&
+           !sh_install_scm_should_spawn(true, 5));
+    assert(sh_install_scm_outcome(false, 1722, false, false) == SH_INSTALL_SCM_OFF);
+    assert(sh_install_scm_outcome(false, 0, false, true) == SH_INSTALL_SCM_OFF);
+    assert(sh_install_scm_outcome(true, 0, false, true) == SH_INSTALL_SCM_ALREADY);
+    assert(sh_install_scm_outcome(true, 1722, true, true) == SH_INSTALL_SCM_STARTED);
+    assert(sh_install_scm_outcome(true, 1722, false, true) == SH_INSTALL_SCM_ALREADY);
+    assert(sh_install_scm_outcome(true, 1722, true, false) == SH_INSTALL_SCM_FAILED);
+    assert(sh_install_scm_outcome(true, 5, false, false) == SH_INSTALL_SCM_FAILED);
+    assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_STARTED), "started"));
+    assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_ALREADY), "already"));
+    assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_OFF), "off"));
+    assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_FAILED), "failed"));
+    assert(!strcmp(sh_install_scm_word(7), "failed"));
+    puts("steam-host: 101 entitlement-list, launch-result, content-wait, config-wait, CEG, service-manager "
+         "and install-service-manager validation cases passed");
 }

@@ -1,5 +1,33 @@
 # Madeira Dock — implementation handoff, ml2000 (2026-09-25)
 
+## ml2014 — `--start-services` for the one-time-install batch (2026-09-27)
+
+Device log 103: Madeira's install batch (`cmd.exe /c call
+madeira-dock-installers.cmd & dockhost.exe`) runs before this host, so no
+service manager exists while a game's installers run (`\pipe\svcctl`
+c0000034 in the log). New CLI mode `dockhost.exe --start-services` (checked
+before the probe opt-in; no Steam client loaded, no report file): the first
+OpenSCManagerW; only on RPC_S_SERVER_UNAVAILABLE (1722) `start_manager`
+(unchanged ml2000 bounded start, event `install-scm-started`). A manager this
+call started stays running (Wine system process, ends with the session); the
+later host run finds it already running and so never owns or stops it. If it
+never answered, the half-started one is terminated. Output: stderr
+`[steam-host] ml2014 install-scm=<2 started|1 already|0 off|-1 failed>`
+(+ `install-scm-error=<Win32>` on failure) and one stdout line
+`services <word>` for the batch's result file; exit 0 always.
+`MADEIRA_DOCK_INSTALL_SCM=0`: no-op (`services off`). Pure decisions in
+validation.c (`sh_install_scm_should_spawn/outcome/word`), 15 new assertions.
+Windows smoke test (native SCM): `services already`, kill switch `services off`,
+both architectures; no-argument run unchanged (exit 2 without the opt-in).
+
+Evidence limit: in log 103 every svcctl open comes from pid 0x20
+(`explorer.exe /desktop`, the session's first process), not from the
+installer's thread. The installer's own failure chain is a missing
+`Microsoft.NET\Framework\v2.0.50727\fusion.dll` (LoadLibraryShim E_HANDLE in
+its managed-runtime plug-in step) → -9. A service manager alone is not
+expected to change that exit; Madeira records such a provided runtime's
+failure as done instead of retrying (app side, ml2014).
+
 ## Open-sourcing — 2026-09-27
 
 The owner (125hz, sole author) open-sourced Madeira Dock under

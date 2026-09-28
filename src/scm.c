@@ -34,7 +34,7 @@ static const wchar_t started_event_name[] = L"__wine_SvcctlStartedEvent";
 /* The service manager this host started; NULL when it was already running. */
 static HANDLE manager_process;
 
-static DWORD start_manager(const struct sh_observer *o, SC_HANDLE *manager)
+static DWORD start_manager(const struct sh_observer *o, SC_HANDLE *manager, const char *started_stage)
 {
     wchar_t directory[MAX_PATH], path[MAX_PATH + 16];
     UINT length = GetSystemDirectoryW(directory, MAX_PATH);
@@ -60,7 +60,7 @@ static DWORD start_manager(const struct sh_observer *o, SC_HANDLE *manager)
         }
         CloseHandle(info.hThread);
         manager_process = process = info.hProcess;
-        o->event("ceg-scm-started", 1);
+        o->event(started_stage, 1);
     }
     HANDLE handles[2];
     DWORD count = 0;
@@ -156,7 +156,7 @@ int32_t sh_ceg_scm_prepare(const struct sh_observer *o, HMODULE client)
     SC_HANDLE manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
     DWORD error = manager ? 0 : GetLastError();
     if (!manager && !manager_process && sh_scm_error_means_absent(error))
-        error = start_manager(o, &manager);
+        error = start_manager(o, &manager, "ceg-scm-started");
     o->event("ceg-scm", manager != NULL);
     if (!manager) {
         o->event("ceg-scm-error", (int32_t)error);
@@ -246,4 +246,41 @@ void sh_ceg_scm_release(const struct sh_observer *o)
     o->event("ceg-scm-stopped", ended);
     CloseHandle(manager_process);
     manager_process = NULL;
+}
+
+/* ml2014: `dockhost.exe --start-services`. Madeira's one-time-install batch
+ * runs this before a game's installers: Windows installers expect a service
+ * manager, and a Dock session otherwise starts none before this host. Only
+ * Wine's standard services.exe is started (the same bounded start as above),
+ * and only when no manager answers. It is left running: a Wine system process
+ * that ends with the session. The later host run finds it already running,
+ * so it does not own it and never stops it. MADEIRA_DOCK_INSTALL_SCM=0: no-op.
+ */
+int32_t sh_install_scm_start(const struct sh_observer *o)
+{
+    bool enabled = !wide_flag(L"MADEIRA_DOCK_INSTALL_SCM", L'0');
+    SC_HANDLE manager = NULL;
+    DWORD first = 0, error = 0;
+    if (enabled) {
+        manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+        first = error = manager ? 0 : GetLastError();
+        if (!manager && sh_install_scm_should_spawn(enabled, first))
+            error = start_manager(o, &manager, "install-scm-started");
+    }
+    bool spawned = manager_process != NULL;
+    enum sh_install_scm outcome = sh_install_scm_outcome(enabled, first, spawned, manager != NULL);
+    if (outcome == SH_INSTALL_SCM_FAILED) o->event("install-scm-error", (int32_t)error);
+    if (manager) CloseServiceHandle(manager);
+    if (manager_process) {
+        /* A manager this call started but that never answered is not left
+         * behind half-started; a working one stays for the session.
+         */
+        if (outcome == SH_INSTALL_SCM_FAILED && WaitForSingleObject(manager_process, 0) != WAIT_OBJECT_0 &&
+            TerminateProcess(manager_process, 0))
+            WaitForSingleObject(manager_process, SH_PROCESS_EXIT_MS);
+        CloseHandle(manager_process);
+        manager_process = NULL;
+    }
+    o->event("install-scm", outcome);
+    return outcome;
 }

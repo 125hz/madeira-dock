@@ -146,6 +146,12 @@ The 32-bit EXE supports the bootstrap only; session/launch requires the x64 host
   and report path (`MADEIRA_STEAM_HOST_LOG`) come from the launcher's environment
   (Madeira's adapter on device; set manually for a PC test).
 - No fallback launches a game after failed authentication or entitlement.
+- `dockhost.exe --start-services` (ml2014): no Steam client is loaded. Makes
+  Wine's service manager reachable for Madeira's one-time-install batch
+  (starts `services.exe` only when none answers, same bounded start as the
+  CEG path), leaves it running for the session, prints one stdout line
+  `services started|already|failed|off` and exits 0.
+  `MADEIRA_DOCK_INSTALL_SCM=0` makes it a no-op (`services off`).
 
 Authentication requires `Steam_BLoggedOn`, `IClientUser::BLoggedOn` and
 `BConnected`. The requested App ID must also appear in the client-provided

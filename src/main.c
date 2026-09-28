@@ -18,6 +18,7 @@
 #include "probe.h"
 #include "session.h"
 #include "scm.h"
+#include "validation.h"
 
 #define PATH_CAP 32768
 static FILE *report;
@@ -25,7 +26,8 @@ static const struct dock_client_layout *client_layout;
 
 static void event(const char *stage, int32_t value)
 {
-    const char *round = !strncmp(stage, "ceg-scm", 7) || !strncmp(stage, "ceg-service-", 12) ? "ml2000" :
+    const char *round = !strncmp(stage, "install-scm", 11) ? "ml2014" :
+        !strncmp(stage, "ceg-scm", 7) || !strncmp(stage, "ceg-service-", 12) ? "ml2000" :
         !strncmp(stage, "ceg-", 4) ? "ml1990" :
         !strncmp(stage, "launch-update-", 14) ? "ml1970" :
         !strncmp(stage, "launch-config-", 14) ? "ml2011" :
@@ -182,12 +184,24 @@ static bool shutdown_client(void *client)
     return ((sh_shutdown_fn)methods[23])(client);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     static wchar_t directory[PATH_CAP], path[PATH_CAP];
     HANDLE mutex = NULL, file = INVALID_HANDLE_VALUE;
     void *public_client = NULL;
     int result = 20;
+
+    /* ml2014: Madeira's one-time-install batch runs this before a game's
+     * installers. No Steam client is loaded; the one stdout line ("services
+     * started|already|failed|off") goes to the batch's result file. Exit 0
+     * always: installers run either way.
+     */
+    if (argc == 2 && !strcmp(argv[1], "--start-services")) {
+        int32_t outcome = sh_install_scm_start(&host_observer);
+        printf("services %s\n", sh_install_scm_word(outcome));
+        fflush(stdout);
+        return 0;
+    }
 
     if (!enabled(L"MADEIRA_STEAM_HOST_PROBE")) {
         event("disabled-set-MADEIRA_STEAM_HOST_PROBE", 0);

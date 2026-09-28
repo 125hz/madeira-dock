@@ -55,4 +55,20 @@ bool sh_should_install_service(bool registered, bool missing, bool install_enabl
 #define SH_SERVICE_INSTALL_TIMEOUT (-1)
 #define SH_SERVICE_INSTALL_MISSING (-2)
 int32_t sh_service_install_report(bool file_present, bool finished, uint32_t exit_code);
+
+/* ml2014: `dockhost.exe --start-services`, run by Madeira's one-time-install
+ * batch before the game's installers. Outcome of making Wine's service
+ * manager reachable: off (MADEIRA_DOCK_INSTALL_SCM=0), already running
+ * (reachable at once, or started by another launcher), started by this call,
+ * or failed. The printed word is the one Madeira's batch result expects.
+ */
+enum sh_install_scm { SH_INSTALL_SCM_FAILED = -1, SH_INSTALL_SCM_OFF = 0,
+                      SH_INSTALL_SCM_ALREADY = 1, SH_INSTALL_SCM_STARTED = 2 };
+/* Spawn services.exe only when enabled and the first open said "absent". */
+bool sh_install_scm_should_spawn(bool enabled, uint32_t first_error);
+/* first_error 0: reachable at once; spawned: this call created services.exe. */
+enum sh_install_scm sh_install_scm_outcome(bool enabled, uint32_t first_error,
+                                           bool spawned, bool reachable);
+/* "started", "already", "off"; "failed" for any other value. */
+const char *sh_install_scm_word(int32_t outcome);
 #endif

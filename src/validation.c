@@ -163,3 +163,30 @@ int32_t sh_service_install_report(bool file_present, bool finished, uint32_t exi
     if (!finished) return SH_SERVICE_INSTALL_TIMEOUT;
     return (int32_t)exit_code;
 }
+
+/* ml2014: the install batch's service manager. Never start a second manager:
+ * only a definite "no listener" (1722) on the first open spawns one.
+ */
+bool sh_install_scm_should_spawn(bool enabled, uint32_t first_error)
+{
+    return enabled && sh_scm_error_means_absent(first_error);
+}
+
+enum sh_install_scm sh_install_scm_outcome(bool enabled, uint32_t first_error,
+                                           bool spawned, bool reachable)
+{
+    if (!enabled) return SH_INSTALL_SCM_OFF;
+    if (!first_error) return SH_INSTALL_SCM_ALREADY;
+    if (!reachable) return SH_INSTALL_SCM_FAILED;
+    return spawned ? SH_INSTALL_SCM_STARTED : SH_INSTALL_SCM_ALREADY;
+}
+
+const char *sh_install_scm_word(int32_t outcome)
+{
+    switch (outcome) {
+    case SH_INSTALL_SCM_OFF: return "off";
+    case SH_INSTALL_SCM_ALREADY: return "already";
+    case SH_INSTALL_SCM_STARTED: return "started";
+    default: return "failed";
+    }
+}

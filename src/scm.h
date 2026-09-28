@@ -17,4 +17,10 @@ int32_t sh_ceg_scm_prepare(const struct sh_observer *o, HMODULE client);
  * client service (bounded) and end that service manager. Otherwise no-op.
  */
 void sh_ceg_scm_release(const struct sh_observer *o);
+/* ml2014: `dockhost.exe --start-services` (Madeira's one-time-install batch):
+ * make Wine's service manager reachable, starting services.exe only when none
+ * answers, and leave it running for the session. Returns enum sh_install_scm
+ * (validation.h). MADEIRA_DOCK_INSTALL_SCM=0: no-op (off).
+ */
+int32_t sh_install_scm_start(const struct sh_observer *o);
 #endif
