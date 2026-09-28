@@ -185,6 +185,16 @@ static bool shutdown_client(void *client)
     return ((sh_shutdown_fn)methods[23])(client);
 }
 
+#define SH_INSTALL_SCM_STEP_MS 20000   /* ml2015 */
+static volatile int32_t install_scm_outcome;
+
+static DWORD WINAPI install_scm_worker(void *unused)
+{
+    (void)unused;
+    install_scm_outcome = sh_install_scm_start(&host_observer);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static wchar_t directory[PATH_CAP], path[PATH_CAP];
@@ -198,8 +208,25 @@ int main(int argc, char **argv)
      * always: installers run either way.
      */
     if (argc == 2 && !strcmp(argv[1], "--start-services")) {
-        int32_t outcome = sh_install_scm_start(&host_observer);
-        printf("services %s\n", sh_install_scm_word(outcome));
+        /* ml2015: a service manager that never answered its RPC pipe left
+         * OpenSCManager blocked, and the batch (and the game) waited forever.
+         * The step runs on a worker thread for at most SH_INSTALL_SCM_STEP_MS;
+         * then it reports "services timeout" and this process ends at once
+         * (the blocked call may hold loader or RPC locks, so no exit cleanup).
+         */
+        HANDLE worker = CreateThread(NULL, 0, install_scm_worker, NULL, 0, NULL);
+        if (!worker) {
+            printf("services %s\n", sh_install_scm_word(sh_install_scm_start(&host_observer)));
+            fflush(stdout);
+            return 0;
+        }
+        if (WaitForSingleObject(worker, SH_INSTALL_SCM_STEP_MS) != WAIT_OBJECT_0) {
+            printf("services timeout\n");
+            fflush(stdout);
+            TerminateProcess(GetCurrentProcess(), 0);
+        }
+        CloseHandle(worker);
+        printf("services %s\n", sh_install_scm_word(install_scm_outcome));
         fflush(stdout);
         return 0;
     }
