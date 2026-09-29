@@ -127,7 +127,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
 
     uint64_t begin = o->now_ms(), online_at = 0;
     bool was_online = false;
-    unsigned logged_callbacks = 0;
+    unsigned logged_callbacks = 0, online_callbacks = 0;
     result = 34;
     for (unsigned tick = 0; tick < 4500 && o->now_ms() - begin < 90000; ++tick) {
         for (unsigned batch = 0; batch < 64; ++batch) {
@@ -135,6 +135,13 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
             if (!api->get_callback(pipe, &cb)) break;
             bool valid = cb.id > 0 && cb.size >= 0 && (!cb.size || cb.data);
             if (logged_callbacks++ < 16) o->event("session-callback-id", cb.id);
+            /* Which callback types arrive once signed in (numbers only): tells a
+             * licence list that never came from one that came and did not list
+             * the app. */
+            else if (was_online && online_callbacks < 32) {
+                o->event("session-online-callback-id", cb.id);
+                ++online_callbacks;
+            }
             if (valid && (cb.id == 102 || cb.id == 103) && cb.size >= 4) {
                 int32_t error;
                 memcpy(&error, cb.data, 4);
@@ -177,6 +184,23 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
             }
         }
         o->sleep_ms(20);
+    }
+    /* Timed out while signed in: report how many apps the account's licences
+     * give Valve's client (a count, no App IDs) and whether the requested one
+     * is among them. 0 means the licence list never arrived or was never
+     * processed; a count without the app means it arrived without this game. */
+    if (result == 34 && was_online) {
+        uint32_t *apps = calloc(65536, sizeof(uint32_t));
+        if (apps) {
+            int32_t count = ((subscriptions_fn)v[182])(client_user, apps, 65536, true);
+            o->event("session-timeout-subscription-count", count);
+            if (count >= 0 && count < 65536)
+                o->event("session-timeout-app-listed",
+                         sh_subscription_list_contains(apps, count, 65536, (uint32_t)app));
+            free(apps);
+        }
+        o->event("session-timeout-still-online", api->logged_on(user, pipe) &&
+                 ((query_fn)v[4])(client_user) && ((query_fn)v[6])(client_user));
     }
 done:
     dock_auth_clear(&auth, sizeof(auth));
