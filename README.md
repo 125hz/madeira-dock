@@ -149,7 +149,8 @@ The 32-bit EXE supports the bootstrap only; session/launch requires the x64 host
 - `dockhost.exe --start-services` (ml2014): no Steam client is loaded. Makes
   Wine's service manager reachable for Madeira's one-time-install batch
   (starts `services.exe` only when none answers, same bounded start as the
-  CEG path), leaves it running for the session, prints one stdout line
+  CEG path; a manager that answers counts as started even if its started
+  event never arrives), leaves it running for the session, prints one stdout line
   `services started|already|failed|off` and exits 0.
   `MADEIRA_DOCK_INSTALL_SCM=0` makes it a no-op (`services off`).
 

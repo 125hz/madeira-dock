@@ -66,12 +66,32 @@ static DWORD start_manager(const struct sh_observer *o, SC_HANDLE *manager, cons
     DWORD count = 0;
     if (started) handles[count++] = started;
     if (process) handles[count++] = process;
-    if (count) {
-        DWORD wait = WaitForMultipleObjects(count, handles, FALSE,
-                                            sh_remaining_ms(o->now_ms(), begin, SH_SCM_START_MS));
+    /* Wine's services.exe sets the started event once its RPC endpoint
+     * listens, but a manager that answers is started whether or not the
+     * event reaches this waiter: on Madeira's iOS port it was seen never to
+     * arrive while the new manager already answered other clients within a
+     * second. So the wait runs in short slices and the manager is asked
+     * between them; the event, the process's exit and the bound end it as
+     * before.
+     */
+    while (count) {
+        uint32_t left = sh_remaining_ms(o->now_ms(), begin, SH_SCM_START_MS);
+        DWORD wait = WaitForMultipleObjects(count, handles, FALSE, sh_scm_poll_slice_ms(left));
         if (process && wait == WAIT_OBJECT_0 + count - 1) {
             if (started) CloseHandle(started);
             return ERROR_PROCESS_ABORTED;
+        }
+        if (wait == WAIT_OBJECT_0 || !left) break;
+        if (wait == WAIT_FAILED) o->sleep_ms(sh_scm_poll_slice_ms(left));
+        *manager = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+        if (*manager) {
+            if (started) CloseHandle(started);
+            return 0;
+        }
+        DWORD error = GetLastError();
+        if (!sh_scm_error_retryable(error)) {
+            if (started) CloseHandle(started);
+            return error;
         }
     }
     if (started) CloseHandle(started);
