@@ -125,7 +125,7 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     o->event("session-logon-start-result", started);
     if (started != 1) { result = 33; goto done; }
 
-    uint64_t begin = o->now_ms(), online_at = 0;
+    uint64_t begin = o->now_ms(), online_at = 0, last_probe = 0;
     bool was_online = false;
     unsigned logged_callbacks = 0, online_callbacks = 0;
     result = 34;
@@ -162,6 +162,21 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
          */
         if (online && o->now_ms() - online_at >= 5000) {
             bool entitled = ((subscribed_fn)v[181])(client_user, (uint32_t)app);
+            if (!entitled && o->now_ms() - last_probe >= 10000) {
+                /* Not yet, every 10 s: how many apps the account's licences give the
+                 * client so far, and whether it owns app 0 (the client itself, which
+                 * every account has). 0 and false mean the ownership map is not built
+                 * yet; a count without the requested app means the licences arrived
+                 * without it. Counts only, no App IDs. */
+                uint32_t *probe = calloc(65536, sizeof(uint32_t));
+                if (probe) {
+                    o->event("session-online-subscription-count",
+                             ((subscriptions_fn)v[182])(client_user, probe, 65536, true));
+                    free(probe);
+                }
+                o->event("session-online-app-zero-query", ((subscribed_fn)v[181])(client_user, 0));
+                last_probe = o->now_ms();
+            }
             if (entitled) {
                 uint32_t *apps = calloc(65536, sizeof(uint32_t));
                 if (!apps) { result = 36; break; }
