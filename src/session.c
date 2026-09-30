@@ -125,9 +125,12 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
     o->event("session-logon-start-result", started);
     if (started != 1) { result = 33; goto done; }
 
-    uint64_t begin = o->now_ms(), online_at = 0, last_probe = 0;
+    uint64_t begin = o->now_ms(), online_at = 0, last_probe = 0, last_list = 0, offline_since = 0;
     bool was_online = false;
-    unsigned logged_callbacks = 0, online_callbacks = 0;
+    unsigned logged_callbacks = 0, online_callbacks = 0, blips = 0, lost = 0;
+    /* MADEIRA_DOCK_LIST_ENTITLEMENT=0: only the single-app query decides, as before. */
+    const char *list_setting = getenv("MADEIRA_DOCK_LIST_ENTITLEMENT");
+    bool use_list = !(list_setting && !strcmp(list_setting, "0"));
     result = 34;
     for (unsigned tick = 0; tick < 4500 && o->now_ms() - begin < 90000; ++tick) {
         for (unsigned batch = 0; batch < 64; ++batch) {
@@ -150,19 +153,40 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
             api->free_callback(pipe);
             if (!valid) { result = SH_CALLBACK_INVALID; goto done; }
         }
-        bool online = api->logged_on(user, pipe) &&
+        bool signed_in = api->logged_on(user, pipe) &&
             ((query_fn)v[4])(client_user) && ((query_fn)v[6])(client_user);
-        if (online != was_online) {
-            o->event("session-authenticated-online", online);
-            was_online = online;
-            online_at = online ? o->now_ms() : 0;
+        uint64_t now = o->now_ms();
+        /* A momentary "not signed in" answer (the client between two of its own
+         * ticks, or an in-process answer that did not arrive in time) used to
+         * restart the 5 s licence wait, so a client that blipped every few
+         * seconds was never asked at all. Signed out now means signed out for a
+         * whole second; shorter blips are counted and reported (durations in ms). */
+        if (signed_in) {
+            if (offline_since) {
+                if (++blips <= 8) o->event("session-online-blip", (int32_t)(now - offline_since));
+                offline_since = 0;
+            }
+            if (!was_online) {
+                was_online = true;
+                online_at = now;
+                o->event("session-authenticated-online", 1);
+            }
+        } else if (was_online) {
+            if (!offline_since) offline_since = now;
+            else if (now - offline_since >= 1000) {
+                was_online = false;
+                online_at = 0;
+                offline_since = 0;
+                ++lost;
+                o->event("session-authenticated-online", 0);
+            }
         }
         /* Allow the real licence/app-info callbacks to arrive after logon.
          * A true subscription is required; timeout never permits launch.
          */
-        if (online && o->now_ms() - online_at >= 5000) {
+        if (was_online && !offline_since && now - online_at >= 5000) {
             bool entitled = ((subscribed_fn)v[181])(client_user, (uint32_t)app);
-            if (!entitled && o->now_ms() - last_probe >= 10000) {
+            if (!entitled && now - last_probe >= 10000) {
                 /* Not yet, every 10 s: how many apps the account's licences give the
                  * client so far, and whether it owns app 0 (the client itself, which
                  * every account has). 0 and false mean the ownership map is not built
@@ -175,9 +199,15 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
                     free(probe);
                 }
                 o->event("session-online-app-zero-query", ((subscribed_fn)v[181])(client_user, 0));
-                last_probe = o->now_ms();
+                last_probe = now;
             }
-            if (entitled) {
+            /* The list of the account's subscribed apps is Valve's client's other
+             * answer to the same question. On one platform the single-app query
+             * stayed false for the whole wait while this list held the app the
+             * whole time. Unless MADEIRA_DOCK_LIST_ENTITLEMENT=0, an app in that
+             * list counts as owned (once a second while the query says no); the
+             * client's own launch path still decides for itself. */
+            if (entitled || (use_list && now - last_list >= 1000)) {
                 uint32_t *apps = calloc(65536, sizeof(uint32_t));
                 if (!apps) { result = 36; break; }
                 int32_t count = ((subscriptions_fn)v[182])(client_user, apps, 65536, true);
@@ -187,19 +217,25 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
                 }
                 listed = sh_subscription_list_contains(apps, count, 65536, (uint32_t)app);
                 free(apps);
-                o->event("session-requested-app-entitled", entitled);
-                o->event("session-subscription-count", count);
-                o->event("session-requested-app-listed", listed);
-                o->event("session-app-zero-query", ((subscribed_fn)v[181])(client_user, 0));
-                o->event("session-invalid-app-query", ((subscribed_fn)v[181])(client_user, UINT32_MAX));
-                result = listed ? 0 : 35;
-                if (!result && enabled("MADEIRA_STEAM_HOST_LAUNCH"))
-                    result = sh_launch(module, engine, client_user, api, o, pipe, user, id, (uint32_t)app, layout);
-                break;
+                last_list = now;
+                if (entitled || listed) {
+                    o->event("session-requested-app-entitled", entitled);
+                    o->event("session-subscription-count", count);
+                    o->event("session-requested-app-listed", listed);
+                    if (!entitled) o->event("session-entitlement-source", 182);
+                    o->event("session-app-zero-query", ((subscribed_fn)v[181])(client_user, 0));
+                    o->event("session-invalid-app-query", ((subscribed_fn)v[181])(client_user, UINT32_MAX));
+                    result = listed ? 0 : 35;
+                    if (!result && enabled("MADEIRA_STEAM_HOST_LAUNCH"))
+                        result = sh_launch(module, engine, client_user, api, o, pipe, user, id, (uint32_t)app, layout);
+                    break;
+                }
             }
         }
         o->sleep_ms(20);
     }
+    if (blips) o->event("session-online-blips", (int32_t)blips);
+    if (lost) o->event("session-online-lost", (int32_t)lost);
     /* Timed out while signed in: report how many apps the account's licences
      * give Valve's client (a count, no App IDs) and whether the requested one
      * is among them. 0 means the licence list never arrived or was never

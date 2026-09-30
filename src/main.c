@@ -170,7 +170,9 @@ static FARPROC symbol(HMODULE module, const char *name)
 }
 
 static uint64_t now_ms(void) { return GetTickCount64(); }
-static void sleep_ms(uint32_t ms) { Sleep(ms); }
+/* Alertable: the host's own overlapped completions (and any user APC) run
+ * during the poll pause instead of waiting for a later blocking wait. */
+static void sleep_ms(uint32_t ms) { SleepEx(ms, TRUE); }
 static const struct sh_observer host_observer = {now_ms, sleep_ms, event};
 
 /* BShutdownIfAllPipesClosed is slot 23 in the public SteamClient021 ABI,
