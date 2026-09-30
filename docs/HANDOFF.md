@@ -1,5 +1,27 @@
 # Madeira Dock — implementation handoff, ml2000 (2026-09-25)
 
+## A manager that answers counts as started (2026-09-29)
+
+Device logs of Madeira's one-time-install batch on the upstream tree
+(test-all-3/4): `dockhost.exe --start-services` started `services.exe`, the
+manager came up within about a second (explorer's COM start connected to it
+and it started rpcss), but `__wine_SvcctlStartedEvent`, which this host
+created, was never set or opened by anyone (the wineserver's event history:
+one create, zero sets), although services.exe had reached the line after its
+SetEvent (its process-monitor thread existed). `start_manager` waited the whole
+30 s for that event, main.c's 20 s bound fired first, and the batch recorded
+`services timeout` with a working manager behind it. Why the event does not
+reach this waiter on iOS is not known yet.
+
+`start_manager` now waits in slices of at most `SH_SCM_POLL_MS` (250 ms,
+`sh_scm_poll_slice_ms` in validation.c) and calls OpenSCManagerW between them:
+an answer returns at once, 1722/1723 keep waiting, another error fails as
+before; the event, the process's exit and the 30 s bound end the wait as
+before. The CEG path shares `start_manager`, so it no longer waits out the
+event either. Windows (manager already running) never reaches this code.
+Validation: `tools/check.sh` (3 new assertions), both architectures build with
+`-Werror`, privacy scan clean. Not yet run on a device.
+
 ## ml2014 — `--start-services` for the one-time-install batch (2026-09-27)
 
 Device log 103: Madeira's install batch (`cmd.exe /c call
