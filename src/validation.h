@@ -46,6 +46,10 @@ bool sh_scm_error_retryable(uint32_t error);
 int32_t sh_ceg_scm_result(bool manager_reachable, bool service_registered);
 /* Milliseconds left of a bound (0 when elapsed; clock regressions count as 0 elapsed). */
 uint32_t sh_remaining_ms(uint64_t now, uint64_t begin, uint64_t bound);
+/* How long a manager start waits before asking the manager again: the time left, at most
+ * SH_SCM_POLL_MS. */
+#define SH_SCM_POLL_MS 250u
+uint32_t sh_scm_poll_slice_ms(uint32_t left);
 enum sh_service_stop sh_service_stop_outcome(bool was_running, bool stopped_by_manager,
                                              bool process_gone, bool ended_by_host);
 /* Run Valve's service installer only for a definitely missing service. */

@@ -143,6 +143,11 @@ uint32_t sh_remaining_ms(uint64_t now, uint64_t begin, uint64_t bound)
     return left > UINT32_MAX - 1 ? UINT32_MAX - 1 : (uint32_t)left;
 }
 
+uint32_t sh_scm_poll_slice_ms(uint32_t left)
+{
+    return left < SH_SCM_POLL_MS ? left : SH_SCM_POLL_MS;
+}
+
 /* A service counts as stopped only when the manager reports it stopped and
  * its process is gone; a process that outlives the bound is ended by the host.
  */

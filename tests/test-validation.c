@@ -80,6 +80,9 @@ int main(void)
     assert(!sh_scm_error_means_absent(1723) && !sh_scm_error_means_absent(5) && !sh_scm_error_means_absent(0));
     assert(sh_scm_error_retryable(1722) && sh_scm_error_retryable(1723));
     assert(!sh_scm_error_retryable(5) && !sh_scm_error_retryable(1060) && !sh_scm_error_retryable(0));
+    assert(sh_scm_poll_slice_ms(0) == 0 && sh_scm_poll_slice_ms(1) == 1);
+    assert(sh_scm_poll_slice_ms(SH_SCM_POLL_MS) == SH_SCM_POLL_MS && SH_SCM_POLL_MS == 250);
+    assert(sh_scm_poll_slice_ms(30000) == SH_SCM_POLL_MS && sh_scm_poll_slice_ms(UINT32_MAX - 1) == SH_SCM_POLL_MS);
     assert(sh_ceg_scm_result(true, true) == 0);
     assert(sh_ceg_scm_result(true, false) == SH_CEG_SERVICE_UNREGISTERED && SH_CEG_SERVICE_UNREGISTERED == -5);
     assert(sh_ceg_scm_result(false, true) == SH_CEG_SCM_UNAVAILABLE && SH_CEG_SCM_UNAVAILABLE == -4);
