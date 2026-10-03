@@ -5,6 +5,12 @@ current build, native/iOS evidence, exact build/test/stage commands and next
 steps. Keep both updated after meaningful changes, and keep the sibling
 Madeira integration guide/handoff (`../Madeira/docs/MADEIRA_DOCK.md`) in step.
 
+`README.md` is written for an outside reader (a user, a contributor, Valve): it
+says what the program does and does not do, in the present tense, and every
+statement in it must match the source. Round-by-round notes, device logs and
+test results go in `docs/HANDOFF.md`, never in the README; the README as it
+stood before 2026-10-02 is kept in `docs/HISTORY.md`.
+
 - Madeira Dock is open source: GPL-3.0-or-later with the Madeira Converter
   Exception (`LICENSE`, `COPYING`, `LICENSE-EXCEPTION.md`), Copyright 2026
   125hz. Every source, test and tool file carries the SPDX header
