@@ -177,6 +177,16 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     void *manager = ((get_manager_fn)(*(void ***)engine)[43])(engine, user, pipe);
     if (!method_is(module, manager, 2, layout->launch) ||
         !method_is(module, manager, 5, layout->install_dir)) return 40;
+    char option_text[16] = {0};
+    uint32_t launch_option = 0;
+    SetLastError(ERROR_SUCCESS);
+    DWORD option_length = GetEnvironmentVariableA("MADEIRA_STEAM_HOST_LAUNCH_OPTION", option_text, sizeof(option_text));
+    if ((!option_length && GetLastError() != ERROR_ENVVAR_NOT_FOUND) || option_length >= sizeof(option_text) ||
+        (option_length && !sh_parse_launch_option(option_text, &launch_option))) {
+        o->event("launch-option-invalid", 1);
+        return 45;
+    }
+    o->event("launch-option-index", (int32_t)launch_option);
     static char actual_utf8[32768];
     static wchar_t actual[32768], expected[32768], normalized[32768];
     DWORD length = GetEnvironmentVariableW(L"MADEIRA_STEAM_HOST_EXPECTED_INSTALL", expected, 32768);
@@ -230,7 +240,7 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     o->event("launch-client-discovery-published", 1);
     SetConsoleCtrlHandler(on_control, TRUE);
     uint64_t gameid = appid;
-    uint64_t call = ((launch_fn)(*(void ***)manager)[2])(manager, &gameid, 0, 0, "");
+    uint64_t call = ((launch_fn)(*(void ***)manager)[2])(manager, &gameid, launch_option, 0, "");
     o->event("launch-request-submitted", call != 0);
     if (!call) { result = 43; goto done; }
     uint64_t begin = o->now_ms(), stopped_at = 0;
@@ -289,6 +299,8 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
                             engine, pipe, call, payload, sizeof(payload), kind, &failed);
                     int32_t error = -1;
                     bool decoded = read && !failed && sh_decode_launch_result(payload, size, gameid, &error);
+                    bool missing_option = decoded && error == 22 && sh_launch_option_missing(payload, size, launch_option);
+                    if (missing_option) o->event("launch-option-missing", (int32_t)launch_option);
                     /* Repeated requests while waiting report only changes,
                      * keeping the bounded report file small.
                      */
@@ -311,7 +323,7 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
                         retry_at = o->now_ms() + sh_launch_retry_delay_ms(retries);
                         result_rejected = false;
                     }
-                    else if (!result_received && decoded && config_wait && !seen_running &&
+                    else if (!result_received && decoded && config_wait && !seen_running && !missing_option &&
                              sh_launch_error_waits_for_config(error) &&
                              (!config_began || o->now_ms() - config_began < SH_CONFIG_WAIT_MS)) {
                         if (!config_began) {
@@ -356,7 +368,7 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
         }
         if (retry_at && !seen_running && o->now_ms() >= retry_at) {
             retry_at = 0;
-            call = ((launch_fn)(*(void ***)manager)[2])(manager, &gameid, 0, 0, "");
+            call = ((launch_fn)(*(void ***)manager)[2])(manager, &gameid, launch_option, 0, "");
             ++retries;
             if (retries <= 3 || retries % 60 == 0) o->event("launch-update-retry", (int32_t)retries);
             if (!call) { result = 43; goto done; }

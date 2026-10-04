@@ -1,5 +1,25 @@
 # Madeira Dock — implementation handoff, ml2000 (2026-09-25)
 
+## Original launch entry keys (2026-10-05)
+
+LaunchApp uses the validated `MADEIRA_STEAM_HOST_LAUNCH_OPTION` for its initial
+request and all retries. It carries the original `config.launch` key, not a
+filtered array offset. An absent variable keeps 0 for older launchers; invalid
+input fails closed with result 45. A bounded, decoded error-22 detail explicitly
+identifying a missing requested entry stops the configuration wait. Reports
+contain only numeric launch-option fields; the detail itself is never logged.
+
+Madeira resolves its installed Windows/default entry before native logoff,
+excludes DLC-only entries and refetches legacy caches without original keys.
+Both app and host must be rebuilt. Authentication, ownership and original game
+DRM remain unchanged.
+
+The same C source passed all four ASan/UBSan suites on Linux and macOS, and x64
+and i386 builds with warnings as errors. The app's Swift ASan regressions also
+passed. A Debug IPA containing this host and the companion Madeira changes was
+installed on an M2 iPad with iPadOS 27; the tester confirms that the previously
+failing game starts. This establishes startup, not extended gameplay coverage.
+
 ## A manager that answers counts as started (2026-09-29)
 
 Device logs of Madeira's one-time-install batch on the upstream tree

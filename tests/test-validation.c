@@ -7,6 +7,31 @@
 #include <stdio.h>
 int main(void)
 {
+    uint32_t option = 99;
+    assert(sh_parse_launch_option("0", &option) && option == 0);
+    assert(sh_parse_launch_option("1", &option) && option == 1);
+    assert(sh_parse_launch_option("17", &option) && option == 17);
+    assert(sh_parse_launch_option("2147483647", &option) && option == INT32_MAX);
+    assert(!sh_parse_launch_option("2147483648", &option));
+    assert(!sh_parse_launch_option("4294967295", &option));
+    assert(!sh_parse_launch_option("00000000000", &option));
+    assert(!sh_parse_launch_option("", &option) && !sh_parse_launch_option(NULL, &option));
+    assert(!sh_parse_launch_option("-1", &option) && !sh_parse_launch_option("+1", &option));
+    assert(!sh_parse_launch_option(" 1", &option) && !sh_parse_launch_option("1x", &option));
+    assert(!sh_parse_launch_option("1", NULL));
+    unsigned char missing[524] = {0};
+    const char missing_text[] = "entry for launch option 7 not found";
+    memcpy(missing + 12, missing_text, sizeof(missing_text));
+    assert(sh_launch_option_missing(missing, sizeof(missing), 7));
+    assert(!sh_launch_option_missing(missing, sizeof(missing), 0));
+    assert(!sh_launch_option_missing(missing, 12, 7));
+    assert(!sh_launch_option_missing(NULL, sizeof(missing), 7));
+    memset(missing + 12, 'x', 512);
+    assert(!sh_launch_option_missing(missing, sizeof(missing), 7));
+    memset(missing + 12, 0, 512);
+    const char pending_text[] = "configuration not yet available";
+    memcpy(missing + 12, pending_text, sizeof(pending_text));
+    assert(!sh_launch_option_missing(missing, sizeof(missing), 7));
     uint32_t apps[] = {17, 29, 44, 0};
     assert(sh_subscription_list_contains(apps, 3, 4, 29));
     assert(!sh_subscription_list_contains(apps, 3, 4, 30));
@@ -125,6 +150,6 @@ int main(void)
     assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_OFF), "off"));
     assert(!strcmp(sh_install_scm_word(SH_INSTALL_SCM_FAILED), "failed"));
     assert(!strcmp(sh_install_scm_word(7), "failed"));
-    puts("steam-host: 101 entitlement-list, launch-result, content-wait, config-wait, session-wait, CEG, service-manager "
+    puts("steam-host: launch-option, entitlement-list, launch-result, content-wait, config-wait, session-wait, CEG, service-manager "
          "and install-service-manager validation cases passed");
 }

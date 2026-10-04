@@ -60,8 +60,9 @@ nothing else.
 10. **Announces itself as the running Steam client**, the way `steam.exe` does: its process id
     and the signed-in account id in Steam's `ActiveProcess` registry values. Games find the
     client through these. The previous values are restored on exit.
-11. **Asks Valve's client to start the game**: `IClientAppManager::LaunchApp` with the default
-    launch option. Valve's client applies its own launch checks and returns its own result; a
+11. **Asks Valve's client to start the game**: `IClientAppManager::LaunchApp` with the original
+    launch entry key selected by Madeira, including nonzero and sparse keys. Valve's client
+    applies its own launch checks and returns its own result; a
     refusal (for example "no licence", "another session is playing", "update required") is
     reported as Valve gave it, and the game is not started.
 12. **Stays up while the game runs**, pumping the client's callbacks, so the game's
@@ -169,7 +170,7 @@ Wine's service manager reachable, prints one line and exits.
 ## Limits
 
 - **Windows program, 64-bit session.** The 32-bit build supports only the bootstrap test.
-- **Default launch option only.** No custom arguments.
+- **Launch entries from Steam's configuration.** No custom arguments.
 - **One Steam session.** While Dock runs it is the account's Steam client; Madeira closes its own
   Steam connection first, because a second sign-in of the same account would replace this one.
 - **Not crash-safe.** If the host is killed, the `ActiveProcess` values it wrote are not
@@ -195,6 +196,7 @@ is opt-in: with no variables set, `dockhost.exe` does nothing and exits with 2.
 | `MADEIRA_STEAM_HOST_BOOTSTRAP=1` | Without `SESSION`: load the client, create and release a user, for five seconds. No sign-in. |
 | `MADEIRA_DOCK_AUTH_FILE` | Path of the one-use sign-in transfer. |
 | `MADEIRA_STEAM_HOST_APPID` | The game to start. |
+| `MADEIRA_STEAM_HOST_LAUNCH_OPTION` | Original numeric `config.launch` key, from 0 to 2147483647. Absent means 0 for older launchers; malformed input fails closed. |
 | `MADEIRA_STEAM_HOST_EXPECTED_INSTALL` | The install folder the client must resolve for it. |
 | `MADEIRA_STEAM_HOST_CLIENT_DIR` | Steam folder (default: the registry's `SteamPath`). Must be an absolute local path. |
 | `MADEIRA_STEAM_HOST_LOG` | Report file. |
@@ -207,6 +209,12 @@ Switches that turn a behaviour off (all default on): `MADEIRA_DOCK_CEG=0`,
 `MADEIRA_DOCK_INSTALL_SCM=0`. The three waits only ask Valve's client again for a bounded time
 when it answers "content is still installing", "the game's configuration has not arrived yet" or
 "another session is playing"; they never turn a refusal into a launch.
+
+The selected launch key is reused on every retry and reported as numeric
+`launch-option-index`. Invalid input reports `launch-option-invalid=1`. An error 22 whose
+bounded detail explicitly identifies the requested launch entry as missing reports
+`launch-option-missing` and stops instead of waiting for configuration. The detail is never
+logged; other configuration waits and the sign-in and licence checks are unchanged.
 
 ### Result codes
 

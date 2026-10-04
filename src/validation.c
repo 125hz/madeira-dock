@@ -5,6 +5,32 @@
  */
 #include "validation.h"
 #include <string.h>
+#include <stdio.h>
+
+bool sh_parse_launch_option(const char *text, uint32_t *option)
+{
+    if (!text || !*text || !option) return false;
+    uint32_t value = 0;
+    for (unsigned i = 0; text[i]; ++i) {
+        if (i >= 10 || text[i] < '0' || text[i] > '9') return false;
+        unsigned digit = (unsigned)(text[i] - '0');
+        if (value > ((uint32_t)INT32_MAX - digit) / 10) return false;
+        value = value * 10 + digit;
+    }
+    *option = value;
+    return true;
+}
+
+bool sh_launch_option_missing(const void *payload, size_t size, uint32_t option)
+{
+    if (!payload || size != 524) return false;
+    const char *detail = (const char *)payload + 12;
+    const char *end = memchr(detail, 0, 512);
+    if (!end) return false;
+    char expected[80];
+    int length = snprintf(expected, sizeof(expected), "entry for launch option %u not found", (unsigned)option);
+    return length > 0 && (size_t)length < sizeof(expected) && strstr(detail, expected) != NULL;
+}
 bool sh_subscription_list_contains(const uint32_t *apps, int32_t count,
                                    size_t capacity, uint32_t requested)
 {

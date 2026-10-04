@@ -15,6 +15,10 @@ bool sh_launch_error_waits_for_content(int32_t error);
 uint32_t sh_launch_retry_delay_ms(unsigned attempt);
 bool sh_launch_error_waits_for_config(int32_t error);
 bool sh_launch_error_waits_for_session(int32_t error);
+/* Decimal config.launch key, bounded to the numeric report range. */
+bool sh_parse_launch_option(const char *text, uint32_t *option);
+/* Recognize only the client's bounded missing-entry diagnostic; never log it. */
+bool sh_launch_option_missing(const void *payload, size_t size, uint32_t option);
 
 /* ml1990: Valve custom-executable (CEG) preparation. Callback 1020025 is
  * posted once per per-file job: int32 EResult, uint32 AppID (8 bytes).
