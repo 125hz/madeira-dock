@@ -41,6 +41,11 @@ int main(void)
     assert(!sh_launch_arguments_valid("a\nb", 3));
     assert(!sh_launch_arguments_valid("a\rb", 3));
     assert(!sh_launch_arguments_valid("\"unclosed", 9));
+    const char escaped[] = {'"', 'a', '\\', '"', 'b', '"', 0};
+    const char unclosed[] = {'"', 'a', '\\', '"', 0};
+    assert(sh_launch_arguments_valid(escaped, sizeof escaped - 1));
+    assert(!sh_launch_arguments_valid(unclosed, sizeof unclosed - 1));
+    assert(!sh_launch_arguments_valid("a\177b", 3));
     char bound[SH_LAUNCH_ARGUMENTS_CAPACITY];
     memset(bound, 'x', sizeof bound);
     assert(sh_launch_arguments_valid(bound, sizeof bound - 1));

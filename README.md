@@ -177,7 +177,7 @@ Wine's service manager reachable, prints one line and exits.
 ## Limits
 
 - **Windows program, 64-bit session.** The 32-bit build supports only the bootstrap test.
-- **Launch entries from Steam's configuration.** No custom arguments.
+- **Launch entries from Steam's configuration.** Bounded user arguments are passed to the selected entry.
 - **One Steam session.** While Dock runs it is the account's Steam client; Madeira closes its own
   Steam connection first, because a second sign-in of the same account would replace this one.
 - **Not crash-safe.** If the host is killed, the `ActiveProcess` values it wrote are not
@@ -260,6 +260,7 @@ logged; other configuration waits and the sign-in and licence checks are unchang
 | 49 | CEG preparation failed. |
 | 50 | Offline: Valve's client cannot log this account on offline (no valid offline logon ticket), or this client build has no verified offline logon. |
 | 51 | Offline: Valve's client refused the offline logon. |
+| 54 | Extra launch arguments are malformed or too long. |
 | 52 | Offline: signed in offline, but the client's cached licences did not list the game within 60 seconds. |
 
 The report (`[steam-host] <round> <stage>=<number>` lines) is documented field by field in

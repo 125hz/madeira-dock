@@ -240,11 +240,8 @@ int sh_session(HMODULE module, void *engine, const struct sh_api *api,
      * MADEIRA_DOCK_LICENCE_WAIT_MS sets it (0..30000). */
     uint64_t licence_wait = 500;
     const char *wait_setting = getenv("MADEIRA_DOCK_LICENCE_WAIT_MS");
-    if (wait_setting && *wait_setting) {
-        char *end = NULL;
-        unsigned long value = strtoul(wait_setting, &end, 10);
-        if (end && !*end && value <= 30000) licence_wait = value;
-    }
+    uint32_t value;
+    if (sh_parse_launch_option(wait_setting, &value) && value <= 30000) licence_wait = value;
     result = 34;
     for (unsigned tick = 0; tick < 4500 && o->now_ms() - begin < 90000; ++tick) {
         for (unsigned batch = 0; batch < 64; ++batch) {

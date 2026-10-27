@@ -198,14 +198,14 @@ int sh_launch(HMODULE module, void *engine, void *client_user,
     if (arguments_length >= SH_LAUNCH_ARGUMENTS_CAPACITY ||
         (!arguments_length && GetLastError() != ERROR_SUCCESS && GetLastError() != ERROR_ENVVAR_NOT_FOUND)) {
         o->event("launch-user-arguments-invalid", 1);
-        return 50;
+        return 54;
     }
     if (arguments_length) {
         int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments_wide, -1,
                                        user_arguments, sizeof user_arguments, NULL, NULL);
         if (!bytes || !sh_launch_arguments_valid(user_arguments, (size_t)bytes - 1)) {
             o->event("launch-user-arguments-invalid", 1);
-            return 50;
+            return 54;
         }
     }
     o->event("launch-user-arguments-bytes", (int32_t)strlen(user_arguments));
